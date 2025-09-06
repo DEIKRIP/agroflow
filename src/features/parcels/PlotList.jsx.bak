@@ -1,0 +1,469 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Icon from '../../components/AppIcon';
+import Button from '../../components/ui/Button';
+import RoleBasedSidebar from '../../components/layout/RoleBasedSidebar';
+import NotificationCenter from '../../components/ui/NotificationCenter';
+import ParcelMap from './components/ParcelMap';
+import ParcelCard from './components/ParcelCard';
+import ParcelFilters from './components/ParcelFilters';
+import AddParcelModal from './components/AddParcelModal';
+
+const ParcelManagement = () => {
+  const navigate = useNavigate();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [parcels, setParcels] = useState([]);
+  const [filteredParcels, setFilteredParcels] = useState([]);
+  const [selectedParcel, setSelectedParcel] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentLanguage, setCurrentLanguage] = useState('es');
+
+  // Mock user data
+  const user = {
+    role: 'admin',
+    permissions: ['view_parcels', 'edit_parcels', 'create_parcels']
+  };
+
+  // Mock farmers data
+  const farmers = [
+    { id: 'F001', name: 'Carlos Mendoza', cedula: 'V-12345678' },
+    { id: 'F002', name: 'María González', cedula: 'V-23456789' },
+    { id: 'F003', name: 'José Rodríguez', cedula: 'V-34567890' },
+    { id: 'F004', name: 'Ana Martínez', cedula: 'V-45678901' },
+    { id: 'F005', name: 'Luis Hernández', cedula: 'V-56789012' }
+  ];
+
+  // Load language preference
+  useEffect(() => {
+    const savedLanguage = localStorage.getItem('siembrapais_language') || 'es';
+    setCurrentLanguage(savedLanguage);
+  }, []);
+
+  // Mock parcels data
+  useEffect(() => {
+    const loadParcels = async () => {
+      setIsLoading(true);
+      
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const mockParcels = [
+        {
+          id: 'P-2024-001',
+          name: 'Parcela Norte',
+          farmerId: 'F001',
+          farmerName: 'Carlos Mendoza',
+          latitude: '10.4806',
+          longitude: '-66.9036',
+          area: 5.2,
+          soilType: 'Franco',
+          primaryCrop: 'Maíz',
+          status: 'Activo',
+          plantingDate: '2024-06-15',
+          lastInspection: '2024-07-10',
+          createdAt: '2024-05-20T10:00:00Z'
+        },
+        {
+          id: 'P-2024-002',
+          name: 'Campo Principal',
+          farmerId: 'F002',
+          farmerName: 'María González',
+          latitude: '10.2500',
+          longitude: '-67.5950',
+          area: 12.8,
+          soilType: 'Arcilloso',
+          primaryCrop: 'Arroz',
+          status: 'En Preparación',
+          plantingDate: '2024-08-01',
+          lastInspection: null,
+          createdAt: '2024-06-01T14:30:00Z'
+        },
+        {
+          id: 'P-2024-003',
+          name: 'Terreno Sur',
+          farmerId: 'F003',
+          farmerName: 'José Rodríguez',
+          latitude: '8.7500',
+          longitude: '-71.2000',
+          area: 3.5,
+          soilType: 'Arenoso',
+          primaryCrop: 'Yuca',
+          status: 'Cosechado',
+          plantingDate: '2024-03-10',
+          lastInspection: '2024-07-05',
+          createdAt: '2024-03-01T09:15:00Z'
+        },
+        {
+          id: 'P-2024-004',
+          name: 'Finca El Cafetal',
+          farmerId: 'F004',
+          farmerName: 'Ana Martínez',
+          latitude: '10.0500',
+          longitude: '-69.3200',
+          area: 8.0,
+          soilType: 'Orgánico',
+          primaryCrop: 'Café',
+          status: 'Activo',
+          plantingDate: '2024-01-15',
+          lastInspection: '2024-07-20',
+          createdAt: '2024-01-10T11:45:00Z'
+        },
+        {
+          id: 'P-2024-005',
+          name: 'Parcela Experimental',
+          farmerId: 'F005',
+          farmerName: 'Luis Hernández',
+          latitude: '9.7500',
+          longitude: '-63.1800',
+          area: 2.1,
+          soilType: 'Limoso',
+          primaryCrop: 'Tomate',
+          status: 'Inactivo',
+          plantingDate: null,
+          lastInspection: '2024-06-30',
+          createdAt: '2024-04-15T16:20:00Z'
+        },
+        {
+          id: 'P-2024-006',
+          name: 'Campo de Frijoles',
+          farmerId: 'F001',
+          farmerName: 'Carlos Mendoza',
+          latitude: '10.5200',
+          longitude: '-66.8500',
+          area: 4.7,
+          soilType: 'Franco',
+          primaryCrop: 'Frijol',
+          status: 'Activo',
+          plantingDate: '2024-07-01',
+          lastInspection: '2024-07-25',
+          createdAt: '2024-06-20T08:30:00Z'
+        }
+      ];
+
+      setParcels(mockParcels);
+      setFilteredParcels(mockParcels);
+      setIsLoading(false);
+    };
+
+    loadParcels();
+  }, []);
+
+  // Handle filters change
+  const handleFilterChange = (filters) => {
+    let filtered = [...parcels];
+    
+    if (filters.status) {
+      filtered = filtered.filter(parcel => parcel.status === filters.status);
+    }
+    
+    if (filters.farmerId) {
+      filtered = filtered.filter(parcel => parcel.farmerId === filters.farmerId);
+    }
+    
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      filtered = filtered.filter(parcel => 
+        parcel.name.toLowerCase().includes(searchLower) ||
+        parcel.id.toLowerCase().includes(searchLower) ||
+        (parcel.primaryCrop && parcel.primaryCrop.toLowerCase().includes(searchLower))
+      );
+    }
+    
+    setFilteredParcels(filtered);
+    
+    // Si hay una parcela seleccionada que ya no está en los resultados filtrados, la deseleccionamos
+    if (selectedParcel && !filtered.some(p => p.id === selectedParcel.id)) {
+      setSelectedParcel(null);
+    }
+  };
+
+  const handleClearFilters = () => {
+    setFilteredParcels(parcels);
+  };
+
+  const handleEditParcel = (parcel) => {
+    console.log('Edit parcel:', parcel);
+    // Implementation for edit functionality
+  };
+
+  const handleRequestInspection = (parcel) => {
+    console.log('Request inspection for parcel:', parcel);
+    navigate('/inspection-workflow', { state: { parcelId: parcel.id } });
+  };
+
+  const handleViewHistory = (parcel) => {
+    console.log('View history for parcel:', parcel);
+    // Implementation for history view
+  };
+
+  const handleAddParcel = (newParcel) => {
+    setParcels(prev => [newParcel, ...prev]);
+    setFilteredParcels(prev => [newParcel, ...prev]);
+  };
+
+  // Handle parcel selection
+  const handleParcelSelect = (parcel) => {
+    if (parcel && parcel.id === selectedParcel?.id) {
+      // Si se hace clic en la misma parcela, la deseleccionamos
+      setSelectedParcel(null);
+    } else {
+      // Seleccionamos la nueva parcela
+      setSelectedParcel(parcel);
+      
+      // Desplazamos la vista para mostrar la tarjeta seleccionada
+      if (parcel) {
+        const element = document.getElementById(`parcel-${parcel.id}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+    }
+  };
+
+  const getStatsData = () => {
+    const total = parcels.length;
+    const active = parcels.filter(p => p.status === 'Activo').length;
+    const inPreparation = parcels.filter(p => p.status === 'En Preparación').length;
+    const harvested = parcels.filter(p => p.status === 'Cosechado').length;
+    const totalArea = parcels.reduce((sum, p) => sum + parseFloat(p.area), 0);
+
+    return { total, active, inPreparation, harvested, totalArea };
+  };
+
+  const stats = getStatsData();
+
+  return (
+    <div className="min-h-screen bg-background">
+      <RoleBasedSidebar 
+        user={user}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
+      
+      <div className={`transition-all duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'}`}>
+        {/* Header */}
+        <header className="bg-card border-b border-border px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center space-x-2 text-sm text-muted-foreground mb-1">
+                <button 
+                  onClick={() => navigate('/farmer-dashboard')}
+                  className="hover:text-foreground micro-transition"
+                >
+                  Panel Principal
+                </button>
+                <Icon name="ChevronRight" size={14} />
+                <span className="text-foreground">Gestión de Parcelas</span>
+              </div>
+              <h1 className="text-2xl font-bold text-foreground">Gestión de Parcelas</h1>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <NotificationCenter />
+              <Button
+                iconName="Plus"
+                iconPosition="left"
+                onClick={() => setShowAddModal(true)}
+              >
+                Agregar Parcela
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        {/* Stats Cards */}
+        <div className="px-6 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <Icon name="MapPin" size={20} className="text-primary" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{stats.total}</p>
+                  <p className="text-sm text-muted-foreground">Total Parcelas</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
+                  <Icon name="CheckCircle" size={20} className="text-success" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{stats.active}</p>
+                  <p className="text-sm text-muted-foreground">Activas</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center">
+                  <Icon name="Clock" size={20} className="text-warning" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{stats.inPreparation}</p>
+                  <p className="text-sm text-muted-foreground">En Preparación</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Icon name="Package" size={20} className="text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{stats.harvested}</p>
+                  <p className="text-sm text-muted-foreground">Cosechadas</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center">
+                  <Icon name="Ruler" size={20} className="text-accent" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{stats.totalArea.toFixed(1)}</p>
+                  <p className="text-sm text-muted-foreground">Hectáreas</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <ParcelFilters
+            onFilterChange={handleFilterChange}
+            onClearFilters={handleClearFilters}
+            className="mb-6"
+          />
+
+          {/* Main Content */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left column - Map */}
+            <div className="lg:col-span-2">
+              <ParcelMap 
+                parcels={filteredParcels}
+                selectedParcel={selectedParcel}
+                onParcelSelect={handleParcelSelect}
+                className="h-[600px]"
+              />
+              
+              {/* Selected Parcel Details */}
+              {selectedParcel && (
+                <div className="mt-4 p-4 bg-card border border-border rounded-lg">
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Detalles de la Parcela</h3>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Nombre:</p>
+                      <p className="font-medium">{selectedParcel.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Agricultor:</p>
+                      <p className="font-medium">{selectedParcel.farmerName}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Cultivo Principal:</p>
+                      <p className="font-medium">{selectedParcel.primaryCrop || 'No especificado'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Área:</p>
+                      <p className="font-medium">{selectedParcel.area} ha</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Estado:</p>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        selectedParcel.status === 'Activo' ? 'bg-green-100 text-green-800' :
+                        selectedParcel.status === 'En Preparación' ? 'bg-yellow-100 text-yellow-800' :
+                        selectedParcel.status === 'Cosechado' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {selectedParcel.status}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Parcels List */}
+            <div className="lg:col-span-3">
+              <div className="bg-card border border-border rounded-lg">
+                <div className="flex items-center justify-between p-4 border-b border-border">
+                  <h3 className="text-lg font-semibold text-foreground">
+                    Parcelas Registradas ({filteredParcels.length})
+                  </h3>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      iconName="Download"
+                      iconPosition="left"
+                    >
+                      Exportar
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="p-4">
+                  {isLoading ? (
+                    <div className="space-y-4">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="animate-pulse">
+                          <div className="bg-muted rounded-lg h-48"></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : filteredParcels.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Icon name="MapPin" size={48} className="mx-auto text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-medium text-foreground mb-2">No hay parcelas</h3>
+                      <p className="text-muted-foreground mb-4">
+                        No se encontraron parcelas que coincidan con los filtros aplicados.
+                      </p>
+                      <Button
+                        iconName="Plus"
+                        iconPosition="left"
+                        onClick={() => setShowAddModal(true)}
+                      >
+                        Agregar Primera Parcela
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 max-h-[500px] overflow-y-auto">
+                      {filteredParcels.map(parcel => (
+                        <ParcelCard
+                          key={parcel.id}
+                          parcel={parcel}
+                          onEdit={handleEditParcel}
+                          onRequestInspection={handleRequestInspection}
+                          onViewHistory={handleViewHistory}
+                          userRole={user.role}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Add Parcel Modal */}
+      <AddParcelModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSave={handleAddParcel}
+        farmers={farmers}
+      />
+    </div>
+  );
+};
+
+export default ParcelManagement;

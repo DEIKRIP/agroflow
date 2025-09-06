@@ -1,0 +1,557 @@
+import React, { useState, useEffect } from 'react';
+import Icon from '../../../components/AppIcon';
+import Button from '../../../components/ui/Button';
+import Input from '../../../components/ui/Input';
+import Select from '../../../components/ui/Select';
+
+const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [] }) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    farmerId: '',
+    latitude: '',
+    longitude: '',
+    area: '',
+    soilType: '',
+    primaryCrop: '',
+    plantingDate: '',
+    description: ''
+  });
+
+  const [errors, setErrors] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const soilOptions = [
+    { value: 'Arcilloso', label: 'Arcilloso - Retiene agua, rico en nutrientes' },
+    { value: 'Arenoso', label: 'Arenoso - Buen drenaje, fácil laboreo' },
+    { value: 'Franco', label: 'Franco - Equilibrado, ideal para cultivos' },
+    { value: 'Limoso', label: 'Limoso - Fértil, retiene humedad' },
+    { value: 'Orgánico', label: 'Orgánico - Alto contenido de materia orgánica' }
+  ];
+
+  const cropOptions = [
+    { value: 'Maíz', label: 'Maíz' },
+    { value: 'Arroz', label: 'Arroz' },
+    { value: 'Frijol', label: 'Frijol' },
+    { value: 'Yuca', label: 'Yuca' },
+    { value: 'Plátano', label: 'Plátano' },
+    { value: 'Café', label: 'Café' },
+    { value: 'Cacao', label: 'Cacao' },
+    { value: 'Tomate', label: 'Tomate' },
+    { value: 'Cebolla', label: 'Cebolla' },
+    { value: 'Ají', label: 'Ají' }
+  ];
+
+  const farmerOptions = farmers.map(farmer => ({
+    value: farmer.id,
+    label: `${farmer.name} - ${farmer.cedula}`
+  }));
+
+  // Mock AI suggestions based on soil type and location
+  useEffect(() => {
+    if (formData.soilType && formData.latitude && formData.longitude) {
+      const suggestions = generateAISuggestions(formData.soilType, formData.latitude, formData.longitude);
+      setAiSuggestions(suggestions);
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  }, [formData.soilType, formData.latitude, formData.longitude]);
+
+  const generateAISuggestions = (soilType, lat, lng) => {
+    // Mock AI logic based on soil type and Venezuelan regions
+    const suggestions = [];
+    
+    if (soilType === 'Franco') {
+      suggestions.push(
+        { crop: 'Maíz', confidence: 95, reason: 'Suelo franco ideal para maíz, clima favorable en esta región' },
+        { crop: 'Frijol', confidence: 88, reason: 'Excelente drenaje y fertilidad para leguminosas' }
+      );
+    } else if (soilType === 'Arcilloso') {
+      suggestions.push(
+        { crop: 'Arroz', confidence: 92, reason: 'Suelo arcilloso retiene agua, perfecto para arroz' },
+        { crop: 'Yuca', confidence: 85, reason: 'Cultivo resistente, se adapta bien a suelos pesados' }
+      );
+    } else if (soilType === 'Arenoso') {
+      suggestions.push(
+        { crop: 'Yuca', confidence: 90, reason: 'Excelente drenaje, ideal para tubérculos' },
+        { crop: 'Ají', confidence: 82, reason: 'Buen drenaje previene enfermedades radiculares' }
+      );
+    } else if (soilType === 'Orgánico') {
+      suggestions.push(
+        { crop: 'Café', confidence: 94, reason: 'Suelo rico en materia orgánica, ideal para café' },
+        { crop: 'Cacao', confidence: 89, reason: 'Alto contenido orgánico favorece el cacao' }
+      );
+    }
+
+    return suggestions;
+  };
+
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors(prev => ({
+        ...prev,
+        [field]: ''
+      }));
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.name.trim()) {
+      newErrors.name = 'El nombre de la parcela es requerido';
+    }
+
+    if (!formData.farmerId) {
+      newErrors.farmerId = 'Debe seleccionar un agricultor';
+    }
+
+    if (!formData.latitude || !formData.longitude) {
+      newErrors.coordinates = 'Las coordenadas son requeridas';
+    } else {
+      const lat = parseFloat(formData.latitude);
+      const lng = parseFloat(formData.longitude);
+      if (lat < 0.5 || lat > 12.5 || lng < -73.5 || lng < -59.5) {
+        newErrors.coordinates = 'Coordenadas fuera del territorio venezolano';
+      }
+    }
+
+    if (!formData.area || parseFloat(formData.area) <= 0) {
+      newErrors.area = 'El área debe ser mayor a 0 hectáreas';
+    }
+
+    if (!formData.soilType) {
+      newErrors.soilType = 'Debe seleccionar el tipo de suelo';
+    }
+
+    if (!formData.primaryCrop) {
+      newErrors.primaryCrop = 'Debe seleccionar el cultivo principal';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsLoading(true);
+    
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const newParcel = {
+        id: `P-${Date.now()}`,
+        ...formData,
+        status: 'En Preparación',
+        createdAt: new Date().toISOString(),
+        lastInspection: null,
+        farmerName: farmers.find(f => f.id === formData.farmerId)?.name || 'Agricultor'
+      };
+
+      if (onSave) {
+        onSave(newParcel);
+      }
+      
+      handleClose();
+    } catch (error) {
+      console.error('Error saving parcel:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setFormData({
+      name: '',
+      farmerId: '',
+      latitude: '',
+      longitude: '',
+      area: '',
+      soilType: '',
+      primaryCrop: '',
+      plantingDate: '',
+      description: ''
+    });
+    setErrors({});
+    setShowSuggestions(false);
+    if (onClose) {
+      onClose();
+    }
+  };
+
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      // Show loading state
+      setErrors(prev => ({
+        ...prev,
+        coordinates: 'Obteniendo ubicación...'
+      }));
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude.toFixed(6);
+          const lng = position.coords.longitude.toFixed(6);
+          
+          setFormData(prev => ({
+            ...prev,
+            latitude: lat,
+            longitude: lng
+          }));
+          
+          // Clear any previous errors
+          setErrors(prev => ({
+            ...prev,
+            coordinates: ''
+          }));
+          
+          // Update map iframe
+          updateMapIframe(lat, lng);
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          let errorMessage = 'No se pudo obtener la ubicación';
+          
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage = 'Se denegó el permiso para acceder a la ubicación';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage = 'La información de ubicación no está disponible';
+              break;
+            case error.TIMEOUT:
+              errorMessage = 'Tiempo de espera agotado al intentar obtener la ubicación';
+              break;
+          }
+          
+          setErrors(prev => ({
+            ...prev,
+            coordinates: errorMessage
+          }));
+          
+          // Fallback to Caracas coordinates
+          setFormData(prev => ({
+            ...prev,
+            latitude: '10.4806',
+            longitude: '-66.9036'
+          }));
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
+    } else {
+      setErrors(prev => ({
+        ...prev,
+        coordinates: 'La geolocalización no es compatible con este navegador'
+      }));
+    }
+  };
+  
+  const updateMapIframe = (lat, lng) => {
+    const iframe = document.querySelector('iframe[title="Mapa de Parcelas SiembraPais"]');
+    if (iframe) {
+      iframe.src = `https://www.google.com/maps/embed/v1/view?key=YOUR_GOOGLE_MAPS_API_KEY&center=${lat},${lng}&zoom=16`;
+    }
+  };
+  
+  // Update map when coordinates change
+  useEffect(() => {
+    if (formData.latitude && formData.longitude) {
+      updateMapIframe(formData.latitude, formData.longitude);
+    }
+  }, [formData.latitude, formData.longitude]);
+
+  const applySuggestion = (suggestion) => {
+    setFormData(prev => ({
+      ...prev,
+      primaryCrop: suggestion.crop
+    }));
+    setShowSuggestions(false);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-card border border-border rounded-lg w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-border">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+              <Icon name="MapPin" size={20} className="text-primary" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-foreground">Agregar Nueva Parcela</h2>
+              <p className="text-sm text-muted-foreground">Complete la información de la parcela</p>
+            </div>
+          </div>
+          <button
+            onClick={handleClose}
+            className="p-2 hover:bg-muted rounded-lg micro-interaction"
+          >
+            <Icon name="X" size={20} />
+          </button>
+        </div>
+
+        {/* Form and Map Container */}
+        <div className="flex flex-col md:flex-row overflow-hidden flex-1">
+          {/* Form Section */}
+          <form onSubmit={handleSubmit} className="p-6 space-y-6 bg-white flex-1 overflow-y-auto">
+          {/* Basic Information */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-foreground">Información Básica</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Nombre de la Parcela"
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+                placeholder="Ej: Parcela Norte, Campo Principal"
+                error={errors.name}
+                required
+              />
+
+              <Select
+                label="Agricultor"
+                options={farmerOptions}
+                value={formData.farmerId}
+                onChange={(value) => handleInputChange('farmerId', value)}
+                placeholder="Seleccionar agricultor"
+                error={errors.farmerId}
+                required
+                searchable
+              />
+            </div>
+          </div>
+
+          {/* Location */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium text-foreground">Ubicación</h3>
+              <div className="flex items-center space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  iconName="MapPin"
+                  iconPosition="left"
+                  onClick={() => {
+                    // Open map in new tab with current coordinates
+                    if (formData.latitude && formData.longitude) {
+                      window.open(`https://www.google.com/maps?q=${formData.latitude},${formData.longitude}`, '_blank');
+                    }
+                  }}
+                  disabled={!formData.latitude || !formData.longitude}
+                >
+                  Ver en Mapa
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  iconName="Navigation"
+                  iconPosition="left"
+                  onClick={getCurrentLocation}
+                >
+                  Usar Ubicación Actual
+                </Button>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Latitud"
+                type="number"
+                step="0.000001"
+                value={formData.latitude}
+                onChange={(e) => handleInputChange('latitude', e.target.value)}
+                placeholder="10.4806"
+                error={errors.coordinates}
+                required
+              />
+
+              <Input
+                label="Longitud"
+                type="number"
+                step="0.000001"
+                value={formData.longitude}
+                onChange={(e) => handleInputChange('longitude', e.target.value)}
+                placeholder="-66.9036"
+                required
+              />
+              
+              {errors.coordinates && (
+                <p className="text-sm text-destructive">{errors.coordinates}</p>
+              )}
+              
+              {/* Mapa en móviles */}
+              <div className="md:hidden mt-2 bg-card border border-border rounded-lg p-4">
+                <div className="aspect-w-16 aspect-h-9 w-full h-48 rounded overflow-hidden">
+                  <iframe
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    style={{ border: 0 }}
+                    src={`https://www.google.com/maps/embed/v1/view?key=YOUR_GOOGLE_MAPS_API_KEY&center=${formData.latitude || '10.4806'},${formData.longitude || '-66.9036'}&zoom=15`}
+                    allowFullScreen
+                    title="Ubicación de la parcela"
+                  ></iframe>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground text-center">
+                  Vista previa de la ubicación de la parcela
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Parcel Details */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-foreground">Detalles de la Parcela</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Área (hectáreas)"
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={formData.area}
+                onChange={(e) => handleInputChange('area', e.target.value)}
+                placeholder="5.0"
+                error={errors.area}
+                required
+              />
+
+              <Select
+                label="Tipo de Suelo"
+                options={soilOptions}
+                value={formData.soilType}
+                onChange={(value) => handleInputChange('soilType', value)}
+                placeholder="Seleccionar tipo de suelo"
+                error={errors.soilType}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="relative">
+                <Select
+                  label="Cultivo Principal"
+                  options={cropOptions}
+                  value={formData.primaryCrop}
+                  onChange={(value) => handleInputChange('primaryCrop', value)}
+                  placeholder="Seleccionar cultivo"
+                  error={errors.primaryCrop}
+                  required
+                />
+                
+                {/* AI Suggestions */}
+                {showSuggestions && aiSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-elevation z-10">
+                    <div className="p-3 border-b border-border">
+                      <div className="flex items-center space-x-2">
+                        <Icon name="Sparkles" size={16} className="text-primary" />
+                        <span className="text-sm font-medium text-foreground">Sugerencias IA</span>
+                      </div>
+                    </div>
+                    <div className="p-2">
+                      {aiSuggestions.map((suggestion, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => applySuggestion(suggestion)}
+                          className="w-full text-left p-2 hover:bg-muted rounded-lg micro-interaction"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-foreground">{suggestion.crop}</span>
+                            <span className="text-xs text-primary">{suggestion.confidence}%</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">{suggestion.reason}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <Input
+                label="Fecha de Siembra (Opcional)"
+                type="date"
+                value={formData.plantingDate}
+                onChange={(e) => handleInputChange('plantingDate', e.target.value)}
+              />
+            </div>
+
+            <Input
+              label="Descripción (Opcional)"
+              type="text"
+              value={formData.description}
+              onChange={(e) => handleInputChange('description', e.target.value)}
+              placeholder="Información adicional sobre la parcela"
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end space-x-3 pt-6 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClose}
+              disabled={isLoading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              loading={isLoading}
+              iconName="Save"
+              iconPosition="left"
+              className="w-full md:w-auto"
+            >
+              Guardar Parcela
+            </Button>
+          </div>
+        </form>
+
+        {/* Mapa en desktop */}
+        <div className="hidden md:flex flex-col w-full md:w-2/5 border-l border-border">
+          <div className="p-4 border-b border-border">
+            <h3 className="font-medium text-foreground">Vista Previa del Mapa</h3>
+            <p className="text-sm text-muted-foreground">Ubicación de la parcela</p>
+          </div>
+          <div className="flex-1 relative">
+            <div className="absolute inset-0">
+              <iframe
+                width="100%"
+                height="100%"
+                frameBorder="0"
+                style={{ border: 0 }}
+                src={`https://www.google.com/maps/embed/v1/view?key=YOUR_GOOGLE_MAPS_API_KEY&center=${formData.latitude || '10.4806'},${formData.longitude || '-66.9036'}&zoom=15`}
+                allowFullScreen
+                title="Ubicación de la parcela"
+              ></iframe>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AddParcelModal;

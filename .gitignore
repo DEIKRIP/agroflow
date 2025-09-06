@@ -1,0 +1,16 @@
+# dependencias y builds
+node_modules/
+dist/
+.next/
+
+# entornos
+.env
+.env.*
+*.local
+
+# otros
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+coverage/
