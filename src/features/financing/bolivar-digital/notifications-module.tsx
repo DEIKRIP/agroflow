@@ -6,7 +6,8 @@ import type { Notification as NotificationType, BolivarDigitalClient } from "@/l
 import { Card, CardContent } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Bell } from "lucide-react";
-import { Button } from "@/components/ui/button";
+// Using @/components/ui/Button to match the actual file name
+import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +26,7 @@ const notificationStyles = {
 };
 
 
-const NotificationCard = ({ notification, clientName, setActiveTab }: { notification: NotificationType, clientName: string, setActiveTab: (tab: string) => void }) => {
+const NotificationCard = ({ notification, clientName, setActiveTab: _setActiveTab }: { notification: NotificationType, clientName: string, setActiveTab: (tab: string) => void }) => {
     const { toast } = useToast();
     const [isUpdating, setIsUpdating] = useState(false);
 
@@ -159,7 +160,7 @@ export default function NotificationsModule({ setActiveTab: _setActiveTab }: { s
                                 key={notif.id} 
                                 notification={notif} 
                                 clientName={clientName} 
-                                setActiveTab={setActiveTab}
+                                setActiveTab={_setActiveTab}
                             />
                         );
                     })}
