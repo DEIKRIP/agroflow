@@ -8,18 +8,17 @@ const inspectionService = {
         .from('inspections')
         .select(`
           *,
-          display_id,
           parcel:parcels!parcel_id(
             id, display_id, area_hectareas, cultivo_principal, tipo_suelo,
             farmer:farmers!farmer_cedula(nombre_completo, cedula, display_id)
           ),
           inspector:user_profiles!inspector_id(full_name, role)
         `)
-        .order('display_id', { ascending: true });
+        .order('created_at', { ascending: false });
 
       // Apply filters
-      if (filters?.estado) {
-        query = query.eq('estado', filters.estado);
+      if (filters?.status) {
+        query = query.eq('status', filters.status);
       }
 
       if (filters?.inspector_id) {
@@ -35,11 +34,11 @@ const inspectionService = {
       }
 
       if (filters?.fecha_desde) {
-        query = query.gte('fecha_inspeccion', filters.fecha_desde);
+        query = query.gte('scheduled_at', filters.fecha_desde);
       }
 
       if (filters?.fecha_hasta) {
-        query = query.lte('fecha_inspeccion', filters.fecha_hasta);
+        query = query.lte('scheduled_at', filters.fecha_hasta);
       }
 
       const { data, error } = await query;
@@ -93,8 +92,8 @@ const inspectionService = {
         .from('inspections')
         .insert([{
           ...inspectionData,
-          fecha_inspeccion: inspectionData.fecha_inspeccion || new Date().toISOString(),
-          estado: inspectionData.estado || 'pendiente',
+          scheduled_at: inspectionData.scheduled_at || null,
+          status: inspectionData.status || 'pendiente',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }])
@@ -119,7 +118,7 @@ const inspectionService = {
         p_action: 'created',
         p_details: { 
           parcel_id: data.parcel_id,
-          estado: data.estado
+          status: data.status
         }
       });
 
@@ -160,7 +159,7 @@ const inspectionService = {
         p_action: 'updated',
         p_details: { 
           fields_updated: Object.keys(updates),
-          new_estado: updates.estado
+          new_status: updates.status
         }
       });
 
@@ -193,7 +192,7 @@ const inspectionService = {
     try {
       const { data, error } = await supabase
         .from('inspections')
-        .select('estado, calificacion_calidad, fecha_inspeccion');
+        .select('status, calificacion_calidad, scheduled_at');
 
       if (error) {
         return { success: false, error: error.message };
@@ -205,15 +204,15 @@ const inspectionService = {
       const stats = {
         total: data?.length || 0,
         by_status: {},
-        this_month: data?.filter(i => new Date(i.fecha_inspeccion) >= thisMonth)?.length || 0,
+        this_month: data?.filter(i => new Date(i.scheduled_at || i.created_at) >= thisMonth)?.length || 0,
         average_quality: 0,
         quality_distribution: {}
       };
 
       // Group by status
       data?.forEach(inspection => {
-        const estado = inspection.estado;
-        stats.by_status[estado] = (stats.by_status[estado] || 0) + 1;
+        const status = inspection.status;
+        stats.by_status[status] = (stats.by_status[status] || 0) + 1;
         
         if (inspection.calificacion_calidad) {
           const quality = inspection.calificacion_calidad;
@@ -245,7 +244,7 @@ const inspectionService = {
             farmer:farmers!farmer_cedula(nombre_completo, cedula, telefono)
           )
         `)
-        .eq('estado', 'pendiente')
+        .eq('status', 'pendiente')
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -271,7 +270,7 @@ const inspectionService = {
           )
         `)
         .eq('inspector_id', inspectorId)
-        .order('fecha_inspeccion', { ascending: false });
+        .order('scheduled_at', { ascending: false });
 
       if (error) {
         return { success: false, error: error.message };

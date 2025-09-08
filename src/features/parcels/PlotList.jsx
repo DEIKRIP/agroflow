@@ -22,6 +22,7 @@ const ParcelManagement = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [currentLanguage, setCurrentLanguage] = useState('es');
+  const [inspectionRequested, setInspectionRequested] = useState({}); // parcelId -> true
 
   const { userProfile } = useAuth();
   const userRole = userProfile?.role || 'productor';
@@ -137,9 +138,20 @@ const ParcelManagement = () => {
   };
 
   const handleRequestInspection = async (parcel) => {
-    const res = await parcelService.requestInspection({ parcel_id: parcel.id });
+    const notes = JSON.stringify({
+      farmer_cedula: parcel.farmerId,
+      farmer_name: parcel.farmerName,
+      parcel_name: parcel.name,
+      area_hectareas: parcel.area,
+      cultivo_principal: parcel.primaryCrop,
+    });
+    const res = await parcelService.requestInspection({ parcel_id: parcel.id, notes });
     if (res.success) {
       toast.success('Inspección solicitada');
+      setInspectionRequested(prev => ({ ...prev, [parcel.id]: true }));
+      // Opcional: actualizar campo de última inspección en UI
+      setParcels(prev => prev.map(p => p.id === parcel.id ? { ...p, lastInspection: new Date().toISOString() } : p));
+      setFilteredParcels(prev => prev.map(p => p.id === parcel.id ? { ...p, lastInspection: new Date().toISOString() } : p));
     } else {
       toast.error(res.error || 'No se pudo solicitar la inspección');
     }
@@ -156,6 +168,7 @@ const ParcelManagement = () => {
       toast.error(res.error || 'No se pudo crear la parcela');
       return;
     }
+    toast.success('Parcela creada correctamente');
     // refresh list
     const filters = (userRole === 'productor' && farmerCedula) ? { farmer_cedula: farmerCedula } : {};
     const list = await parcelService.getParcels(filters);
@@ -165,8 +178,8 @@ const ParcelManagement = () => {
         name: p.nombre || `Parcela ${p.display_id || ''}`,
         farmerId: p.farmer_cedula,
         farmerName: p.farmer?.nombre_completo || p.farmer_cedula,
-        latitude: p.latitud,
-        longitude: p.longitud,
+        latitude: p.ubicacion_lat,
+        longitude: p.ubicacion_lng,
         area: p.area_hectareas,
         soilType: p.tipo_suelo,
         primaryCrop: p.cultivo_principal,
@@ -177,7 +190,14 @@ const ParcelManagement = () => {
       }));
       setParcels(mapped);
       setFilteredParcels(mapped);
-      setSelectedParcel(mapped[0] || null);
+      // Seleccionar la nueva parcela creada
+      const createdId = res.data?.id;
+      if (createdId) {
+        const created = mapped.find(p => p.id === createdId);
+        setSelectedParcel(created || mapped[0] || null);
+      } else {
+        setSelectedParcel(mapped[0] || null);
+      }
     }
     setShowAddModal(false);
   };
@@ -429,6 +449,7 @@ const ParcelManagement = () => {
                             onRequestInspection={handleRequestInspection}
                             onViewHistory={handleViewHistory}
                             userRole={userRole}
+                            inspectionRequested={!!inspectionRequested[parcel.id]}
                           />
                         </div>
                       ))}

@@ -3,22 +3,21 @@ const path = require('path');
 
 const directory = path.join(__dirname, 'src');
 
-// Map of incorrect imports to correct ones
-const importMap = {
-  "from \"@/components/ui/button\"": "from \"@/components/ui/Button\"",
-  "from \"@/components/ui/input\"": "from \"@/components/ui/Input\"",
-  "from \"@/components/ui/label\"": "from \"@/components/ui/Label\"",
-  "from \"@/components/ui/select\"": "from \"@/components/ui/Select\""
-};
+// Replace only Button -> button to match the renamed file 'button.jsx'
+// Works with alias '@/components/...' and relative paths like '../../components/...'
+const patterns = [
+  { name: 'Button', regex: /from\s+(["'])([^"']*components\/ui\/)Button\1/g, replacement: 'from $1$2button$1' }
+];
 
 function processFile(filePath) {
   try {
     let content = fs.readFileSync(filePath, 'utf8');
     let updated = false;
 
-    Object.entries(importMap).forEach(([incorrect, correct]) => {
-      if (content.includes(incorrect)) {
-        content = content.replace(new RegExp(incorrect, 'g'), correct);
+    patterns.forEach(({ regex, replacement, name }) => {
+      const before = content;
+      content = content.replace(regex, replacement);
+      if (before !== content) {
         updated = true;
       }
     });

@@ -3,6 +3,8 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
+import MapPicker from '../../../components/maps/MapPicker';
+import { toast } from 'react-hot-toast';
 
 const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'productor', farmerCedula = null }) => {
   const [formData, setFormData] = useState({
@@ -20,6 +22,8 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
   const [isLoading, setIsLoading] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [geoAccuracy, setGeoAccuracy] = useState(null); // metros
 
   const soilOptions = [
     { value: 'Arcilloso', label: 'Arcilloso - Retiene agua, rico en nutrientes' },
@@ -65,14 +69,39 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
         return;
       }
 
+      // Advertencia suave si no hay coordenadas, pero no bloquear
+      if (!formData.latitude || !formData.longitude) {
+        toast('Registrando sin coordenadas. Puede asignarlas luego desde edición.', { icon: 'ℹ️' });
+      }
+
+      // Normalizar valores a enums de Supabase (lowercase sin acentos)
+      const normalizeEnum = (val) => {
+        if (!val) return null;
+        const from = 'ÁÉÍÓÚÜÑáéíóúüñ';
+        const to   = 'AEIOUUNaeiouun';
+        let out = String(val)
+          .split('')
+          .map(ch => {
+            const idx = from.indexOf(ch);
+            return idx >= 0 ? to[idx] : ch;
+          })
+          .join('')
+          .toLowerCase();
+        // Ajustes específicos de vocabulario
+        if (out === 'organico') out = 'humifero';
+        return out;
+      };
+
       // Mapear a esquema real de BD
       const payload = {
+        nombre: formData.name || null,
         farmer_cedula: ced || null,
         ubicacion_lat: formData.latitude ? parseFloat(formData.latitude) : null,
         ubicacion_lng: formData.longitude ? parseFloat(formData.longitude) : null,
         area_hectareas: formData.area ? parseFloat(formData.area) : null,
-        tipo_suelo: formData.soilType || null,
-        cultivo_principal: formData.primaryCrop || null,
+        tipo_suelo: normalizeEnum(formData.soilType),
+        cultivo_principal: normalizeEnum(formData.primaryCrop),
+        fecha_siembra: formData.plantingDate || null,
         descripcion: formData.description || null
       };
       await onSave(payload);
@@ -91,6 +120,11 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
         (position) => {
           handleInputChange('latitude', position.coords.latitude);
           handleInputChange('longitude', position.coords.longitude);
+          if (typeof position.coords.accuracy === 'number') {
+            setGeoAccuracy(position.coords.accuracy);
+          }
+          // Al obtener ubicación, abrimos el mapa para visualizar el pin
+          setShowMap(true);
         },
         (error) => {
           console.error('Error getting location:', error);
@@ -176,14 +210,9 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
                     size="sm"
                     iconName="MapPin"
                     iconPosition="left"
-                    onClick={() => {
-                      if (formData.latitude && formData.longitude) {
-                        window.open(`https://www.google.com/maps?q=${formData.latitude},${formData.longitude}`, '_blank');
-                      }
-                    }}
-                    disabled={!formData.latitude || !formData.longitude}
+                    onClick={() => setShowMap((prev) => !prev)}
                   >
-                    Ver en Mapa
+                    {showMap ? 'Ocultar Mapa' : 'Ver en Mapa'}
                   </Button>
                   <Button
                     type="button"
@@ -193,53 +222,50 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
                     iconPosition="left"
                     onClick={getCurrentLocation}
                   >
-                    Usar Ubicación Actual
+                    Mi Ubicación
                   </Button>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
                   label="Latitud"
                   type="number"
-                  step="0.000001"
+                  step="any"
                   value={formData.latitude}
                   onChange={(e) => handleInputChange('latitude', e.target.value)}
                   placeholder="Ej: 10.4806"
-                  error={errors.latitude}
+                  icon="MapPin"
                 />
                 <Input
                   label="Longitud"
                   type="number"
-                  step="0.000001"
+                  step="any"
                   value={formData.longitude}
                   onChange={(e) => handleInputChange('longitude', e.target.value)}
                   placeholder="Ej: -66.9036"
-                  error={errors.longitude}
+                  icon="MapPin"
                 />
               </div>
-              
-              {errors.location && (
-                <p className="text-sm text-destructive">{errors.location}</p>
-              )}
-              
-              {/* Mobile Map Preview */}
-              <div className="md:hidden mt-2 bg-card border border-border rounded-lg p-4">
-                <div className="aspect-w-16 aspect-h-9 w-full h-48 rounded overflow-hidden">
-                  <iframe
-                    width="100%"
-                    height="100%"
-                    frameBorder="0"
-                    style={{ border: 0 }}
-                    src={`https://www.google.com/maps/embed/v1/view?key=YOUR_GOOGLE_MAPS_API_KEY&center=${formData.latitude || '10.4806'},${formData.longitude || '-66.9036'}&zoom=15`}
-                    allowFullScreen
-                    title="Ubicación de la parcela"
+              {showMap && (
+                <div className="h-64 md:h-80 rounded-lg overflow-hidden border border-border">
+                  <MapPicker
+                    value={formData.latitude && formData.longitude 
+                      ? { latitude: formData.latitude, longitude: formData.longitude } 
+                      : null}
+                    onChange={({ latitude, longitude }) => {
+                      handleInputChange('latitude', latitude);
+                      handleInputChange('longitude', longitude);
+                    }}
+                    className="h-full w-full"
+                    accuracy={geoAccuracy}
                   />
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground text-center">
-                  Vista previa de la ubicación de la parcela
-                </p>
-              </div>
+              )}
+
+              {errors.location && (
+                <p className="text-sm text-red-500">{errors.location}</p>
+              )}
             </div>
 
             {/* Parcel Details */}
@@ -312,24 +338,24 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
             </div>
           </form>
 
-          {/* Desktop Map Preview */}
+          {/* Desktop Map Picker */}
           <div className="hidden md:flex flex-col w-full md:w-2/5 border-l border-border">
             <div className="p-4 border-b border-border">
-              <h3 className="font-medium text-foreground">Vista Previa del Mapa</h3>
-              <p className="text-sm text-muted-foreground">Ubicación de la parcela</p>
+              <h3 className="font-medium text-foreground">Seleccionar en el Mapa</h3>
+              <p className="text-sm text-muted-foreground">Haga clic o arrastre el marcador para definir la ubicación</p>
             </div>
-            <div className="flex-1 relative">
-              <div className="absolute inset-0">
-                <iframe
-                  width="100%"
-                  height="100%"
-                  frameBorder="0"
-                  style={{ border: 0 }}
-                  src={`https://www.google.com/maps/embed/v1/view?key=YOUR_GOOGLE_MAPS_API_KEY&center=${formData.latitude || '10.4806'},${formData.longitude || '-66.9036'}&zoom=15`}
-                  allowFullScreen
-                  title="Ubicación de la parcela"
-                />
-              </div>
+            <div className="flex-1">
+              <MapPicker
+                value={formData.latitude && formData.longitude ? { latitude: parseFloat(formData.latitude), longitude: parseFloat(formData.longitude) } : null}
+                onChange={(coords) => {
+                  if (!coords) return;
+                  handleInputChange('latitude', coords.latitude);
+                  handleInputChange('longitude', coords.longitude);
+                }}
+                height="100%"
+                zoom={formData.latitude && formData.longitude ? 15 : 10}
+                accuracy={geoAccuracy}
+              />
             </div>
           </div>
         </div>

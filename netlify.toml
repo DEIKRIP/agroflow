@@ -8,6 +8,11 @@
   NPM_VERSION = "10.0.0"
 
 [[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
@@ -22,7 +27,7 @@
     Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.supabase.co; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https: data:; connect-src 'self' https://*.supabase.co; frame-src 'self' https://*.supabase.co;"
 
 [dev]
-  command = "npm run dev"
-  targetPort = 3000
+  command = "npm start"
+  targetPort = 5173
   publish = "dist"
   autoLaunch = false

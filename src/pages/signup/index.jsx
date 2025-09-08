@@ -71,20 +71,25 @@ const SignupPage = () => {
         email: formData.email,
         password: formData.password,
         options: {
+          // Importante: estos metadatos se usan en el trigger `public.handle_new_user`
+          // (ver supabase/20250125181800_siembra_pais_digital.sql) para crear
+          // un registro en `public.user_profiles` con rol 'productor' por defecto.
           data: {
             first_name: formData.firstName,
             last_name: formData.lastName,
+            full_name: `${formData.firstName} ${formData.lastName}`.trim(),
+            role: 'productor',
             phone: formData.phone,
             document_type: formData.documentType,
-            document_number: formData.documentNumber
+            document_number: formData.documentNumber,
           },
-          emailRedirectTo: `${window.location.origin}/login`
-        }
+          emailRedirectTo: `${window.location.origin}/login`,
+        },
       });
 
       if (signUpError) throw signUpError;
 
-      toast.success('¡Registro exitoso! Por favor verifica tu correo electrónico para activar tu cuenta. Luego inicia sesión.');
+      toast.success('Registro exitoso para productor agrícola');
       navigate('/login');
       
     } catch (error) {

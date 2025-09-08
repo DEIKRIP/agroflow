@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Image from '../../../components/AppImage';
 import StatusBadgeSystem, { PriorityBadge } from '../../../components/ui/StatusBadgeSystem';
+import { supabase } from '../../../lib/supabase';
 
 const InspectionQueue = ({ onSelectInspection, selectedInspectionId }) => {
   const [filter, setFilter] = useState('all'); // all, pending, scheduled, overdue
+  const [dbInspections, setDbInspections] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const inspections = [
+  const inspectionsMock = [
     {
       id: 1,
       farmer: {
@@ -97,6 +100,88 @@ const InspectionQueue = ({ onSelectInspection, selectedInspectionId }) => {
     }
   ];
 
+  // Load inspections from Supabase and normalize into UI shape
+  useEffect(() => {
+    const fetchInspections = async () => {
+      try {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from('inspections')
+          .select(`
+            id, status, priority, scheduled_at, created_at,
+            parcel:parcels!parcel_id(
+              id, display_id, area_hectareas, cultivo_principal, farmer_cedula,
+              ubicacion_lat, ubicacion_lng,
+              farmer:farmers!farmer_cedula(cedula, nombre_completo)
+            ),
+            inspector:user_profiles!inspector_id(full_name)
+          `)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+
+        const normalized = (data || []).map((row) => {
+          const scheduledDate = new Date(row.scheduled_at || row.created_at);
+          // Map DB status (es) to UI status (en)
+          let uiStatus = 'pending';
+          if (row.status === 'pendiente') uiStatus = 'pending';
+          else if (row.status === 'programada' || row.status === 'en_progreso') uiStatus = 'scheduled';
+          else if (row.status === 'completada') uiStatus = 'completed';
+          else if (row.status === 'cancelada') uiStatus = 'cancelled';
+
+          // Compute overdue
+          const now = new Date();
+          const isOver = scheduledDate && scheduledDate < now && !['completed','cancelled'].includes(uiStatus);
+          if (isOver && uiStatus === 'scheduled') {
+            uiStatus = 'overdue';
+          }
+
+          // Map priority es->en for UI badge
+          const priorityMap = { baja: 'low', media: 'medium', alta: 'high', urgente: 'urgent' };
+          const uiPriority = priorityMap[row.priority] || 'medium';
+
+          return {
+            id: row.id,
+            farmer: {
+              name: row?.parcel?.farmer?.nombre_completo || 'Sin nombre',
+              cedula: row?.parcel?.farmer?.cedula || row?.parcel?.farmer_cedula || 'N/D',
+              avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face'
+            },
+            parcel: {
+              id: row?.parcel?.display_id || `Parcela ${row?.parcel?.id}`,
+              location: '',
+              area: Number(row?.parcel?.area_hectareas || 0),
+              crop: typeof row?.parcel?.cultivo_principal === 'string' ? row.parcel.cultivo_principal : '',
+              coordinates: {
+                lat: row?.parcel?.ubicacion_lat ?? null,
+                lng: row?.parcel?.ubicacion_lng ?? null
+              }
+            },
+            inspection: {
+              type: 'initial',
+              priority: uiPriority,
+              scheduledDate,
+              inspector: row?.inspector?.full_name || '—',
+              status: uiStatus
+            }
+          };
+        });
+        setDbInspections(normalized);
+      } catch (e) {
+        console.error('Error loading inspections:', e);
+        setDbInspections([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInspections();
+  }, []);
+
+  const inspections = useMemo(() => {
+    // Merge DB with mock to preserve demo items
+    return [...dbInspections, ...inspectionsMock];
+  }, [dbInspections]);
+
   const filteredInspections = inspections.filter(inspection => {
     if (filter === 'all') return true;
     if (filter === 'pending') return inspection.inspection.status === 'pending';
@@ -142,7 +227,7 @@ const InspectionQueue = ({ onSelectInspection, selectedInspectionId }) => {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">Cola de Inspecciones</h2>
           <span className="text-sm text-muted-foreground">
-            {filteredInspections.length} inspecciones
+            {loading ? 'Cargando…' : `${filteredInspections.length} inspecciones`}
           </span>
         </div>
 

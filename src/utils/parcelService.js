@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import api from '../lib/api';
 
 const parcelService = {
   // Get parcels with filters
@@ -82,28 +83,15 @@ const parcelService = {
     }
   },
 
-  // Create parcel
+  // Create parcel (frontend must supply required columns: area_hectareas, cultivo_principal)
   createParcel: async (parcelData) => {
     try {
-      // Must set user_id to the authenticated user's id to satisfy RLS
-      const { data: authData, error: authErr } = await supabase.auth.getUser();
-      if (authErr) return { success: false, error: authErr.message };
-      const user = authData?.user;
-      if (!user?.id) return { success: false, error: 'No autenticado' };
-
-      const payload = {
-        ...parcelData,
-        user_id: user.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
+      // Insert only existing columns for current schema
       const { data, error } = await supabase
         .from('parcels')
-        .insert([payload])
+        .insert([parcelData])
         .select(`
           *,
-          user_id,
           farmer:farmers!farmer_cedula(nombre_completo, cedula)
         `)
         .single();
@@ -112,17 +100,19 @@ const parcelService = {
         return { success: false, error: error.message };
       }
 
-      // Log activity
-      await supabase.rpc('log_activity', {
-        p_entity_type: 'parcel',
-        p_entity_id: data.id,
-        p_action: 'created',
-        p_details: { 
-          farmer_cedula: data.farmer_cedula,
-          area_hectareas: data.area_hectareas,
-          cultivo: data.cultivo_principal
-        }
-      });
+      // Log activity (best-effort)
+      try {
+        await supabase.rpc('log_activity', {
+          p_entity_type: 'parcel',
+          p_entity_id: data.id,
+          p_action: 'created',
+          p_details: { 
+            farmer_cedula: data.farmer_cedula,
+            area_hectareas: data.area_hectareas,
+            cultivo: data.cultivo_principal
+          }
+        });
+      } catch (_) {}
 
       return { success: true, data };
     } catch (error) {
@@ -131,20 +121,18 @@ const parcelService = {
   },
 
   // Request an inspection for a parcel (helper; table created by migration)
-  requestInspection: async ({ parcel_id, notes }) => {
+  requestInspection: async ({ parcel_id, priority = 'media', scheduled_at = null, metadata = {} }) => {
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData?.user?.id;
-      if (!userId) return { success: false, error: 'No autenticado' };
-      const { data, error } = await supabase
-        .from('inspections')
-        .insert([{ parcel_id, created_by: userId, status: 'scheduled', notes: notes || null }])
-        .select('*')
-        .single();
-      if (error) return { success: false, error: error.message };
+      // Use API to enforce validation & dedupe
+      const data = await api.post('/inspections', {
+        parcel_id,
+        priority,
+        scheduled_at,
+        metadata
+      });
       return { success: true, data };
     } catch (e) {
-      return { success: false, error: 'Error al solicitar inspección' };
+      return { success: false, error: e?.message || 'Error al solicitar inspección' };
     }
   },
 

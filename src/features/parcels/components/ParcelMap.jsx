@@ -1,29 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import dynamic from 'next/dynamic';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-
-// Import MapContainer and other components directly
-const MapContainer = dynamic(
-  () => import('react-leaflet').then((mod) => mod.MapContainer),
-  { ssr: false }
-);
-const TileLayer = dynamic(
-  () => import('react-leaflet').then((mod) => mod.TileLayer),
-  { ssr: false }
-);
-const Marker = dynamic(
-  () => import('react-leaflet').then((mod) => mod.Marker),
-  { ssr: false }
-);
-const Popup = dynamic(
-  () => import('react-leaflet').then((mod) => mod.Popup),
-  { ssr: false }
-);
-const useMap = dynamic(
-  () => import('react-leaflet').then((mod) => mod.useMap),
-  { ssr: false }
-);
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 
 // Fix para los iconos de Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -33,8 +11,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
 });
 
-const THUNDERFOREST_API_KEY = 'd953e6cb4ed34b0487a72e335333073a';
-const THUNDERFOREST_URL = `https://tile.thunderforest.com/atlas/{z}/{x}/{y}.png?apikey=${THUNDERFOREST_API_KEY}`;
+// Usar OpenStreetMap (gratis, sin API key)
 
 const ParcelMap = ({ parcels = [], selectedParcel, onParcelSelect, className = '' }) => {
   const [mapCenter, setMapCenter] = useState([10.4806, -66.9036]); // Caracas, Venezuela
@@ -86,8 +63,8 @@ const ParcelMap = ({ parcels = [], selectedParcel, onParcelSelect, className = '
           zoomControl={true}
         >
           <TileLayer
-            url={THUNDERFOREST_URL}
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://www.thunderforest.com/">Thunderforest</a>'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           />
           {parcels.map((parcel) => {
             if (!parcel.latitude || !parcel.longitude) return null;

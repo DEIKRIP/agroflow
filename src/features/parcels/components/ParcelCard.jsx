@@ -2,6 +2,8 @@ import React from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import StatusBadgeSystem from '../../../components/ui/StatusBadgeSystem';
+import { useCreateInspection } from '../../../hooks/useCreateInspection';
+import toast from 'react-hot-toast';
 
 const ParcelCard = ({ 
   parcel, 
@@ -10,8 +12,37 @@ const ParcelCard = ({
   onEdit, 
   onRequestInspection, 
   onViewHistory, 
-  userRole = 'farmer' 
+  userRole = 'farmer',
+  inspectionRequested = false
 }) => {
+  const createInspection = useCreateInspection();
+
+  const handleRequestInspection = async () => {
+    if (inspectionRequested || createInspection.isPending) return;
+    try {
+      const payload = {
+        parcel_id: parcel.id,
+        priority: 'media',
+        metadata: {
+          trigger: 'from_parcel_card',
+          source_ui: 'parcel_card',
+          parcel_snapshot: {
+            code: parcel.code || String(parcel.id),
+            area_ha: parcel.area ?? parcel.area_hectareas ?? null,
+            cultivo: parcel.primaryCrop || parcel.cultivo_principal || null,
+            coords: [parcel.latitude ?? parcel.ubicacion_lat ?? null, parcel.longitude ?? parcel.ubicacion_lng ?? null]
+          }
+        }
+      };
+      const result = await createInspection.mutateAsync(payload);
+      toast.success('Inspección solicitada correctamente');
+      if (typeof onRequestInspection === 'function') {
+        onRequestInspection(parcel, result);
+      }
+    } catch (err) {
+      toast.error(err?.message || 'No se pudo solicitar la inspección');
+    }
+  };
   const getSoilTypeIcon = (soilType) => {
     const icons = {
       'Arcilloso': 'Mountain',
@@ -60,11 +91,15 @@ const ParcelCard = ({
   };
 
   const formatCoordinates = (lat, lng) => {
+    if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) {
+      return 'Sin coordenadas';
+    }
     return `${parseFloat(lat).toFixed(4)}°, ${parseFloat(lng).toFixed(4)}°`;
   };
 
-  const canEdit = userRole === 'admin' || userRole === 'farmer';
-  const canRequestInspection = userRole === 'admin' || userRole === 'operator';
+  // Roles reales en la app: 'admin', 'operador', 'productor'
+  const canEdit = userRole === 'admin' || userRole === 'productor';
+  const canRequestInspection = userRole === 'admin' || userRole === 'operador';
   const canViewHistory = true;
 
   const handleCardClick = (e) => {
@@ -202,13 +237,17 @@ const ParcelCard = ({
         
         {canRequestInspection && (
           <Button
-            variant="secondary"
+            variant={inspectionRequested ? 'default' : 'secondary'}
             size="sm"
             iconName="ClipboardCheck"
             iconPosition="left"
-            onClick={() => onRequestInspection && onRequestInspection(parcel)}
+            onClick={handleRequestInspection}
+            disabled={inspectionRequested || createInspection.isPending}
+            className={inspectionRequested ? 'bg-green-600 hover:bg-green-600 text-white' : ''}
           >
-            Solicitar Inspección
+            {inspectionRequested
+              ? 'Inspección Solicitada'
+              : (createInspection.isPending ? 'Solicitando…' : 'Solicitar Inspección')}
           </Button>
         )}
         

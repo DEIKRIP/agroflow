@@ -67,6 +67,11 @@ const LoginForm = ({ onSubmit, isLoading, error }) => {
           <div className="text-sm text-error">{error}</div>
         </div>
       )}
+      {/* Nota aclaratoria: credenciales */}
+      <div className="rounded-md bg-muted/40 border border-border/60 p-3 text-xs text-muted-foreground">
+        Inicia sesión con el <span>correo</span> y la
+        <span> contraseña</span> que definiste al registrarte.
+      </div>
       <div className="space-y-4">
         <Input
           label="Correo Electrónico"

@@ -48,7 +48,13 @@ const UserMenu = ({ user }) => {
         </div>
         <div className="hidden md:block text-left">
           <p className="text-sm font-medium text-foreground">{userProfile?.full_name || user?.name || 'Usuario'}</p>
-          <p className="text-xs text-muted-foreground">{userProfile?.cedula || userProfile?.farmer_cedula || user?.cedula || user?.email || ''}</p>
+          {userProfile?.cedula || userProfile?.farmer_cedula ? (
+            <p className="text-xs font-medium text-foreground">
+              C.I. {userProfile?.cedula || userProfile?.farmer_cedula}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">{user?.email || ''}</p>
+          )}
         </div>
       </button>
 
@@ -56,7 +62,12 @@ const UserMenu = ({ user }) => {
         <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg overflow-hidden z-50 border border-border">
           <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
             <div className="px-4 py-2 border-b border-border">
-              <p className="text-sm font-medium text-foreground">{user?.name || 'Usuario'}</p>
+              <p className="text-sm font-medium text-foreground">{userProfile?.full_name || user?.name || 'Usuario'}</p>
+              {(userProfile?.cedula || userProfile?.farmer_cedula) && (
+                <p className="text-xs font-medium text-foreground">
+                  C.I. {userProfile?.cedula || userProfile?.farmer_cedula}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground truncate">{user?.email || ''}</p>
             </div>
             

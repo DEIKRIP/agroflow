@@ -21,6 +21,7 @@ const FarmerManagement = () => {
   // Datos del formulario de nuevo agricultor
   const [newFarmer, setNewFarmer] = useState({
     name: '',
+    docType: 'V',
     cedula: '',
     rif: '',
     organizationType: 'Individual',
@@ -89,6 +90,12 @@ const FarmerManagement = () => {
       setFormError('');
       setIsLoading(true);
 
+      // Normalizar cédula con prefijo de tipo de documento (V/E/J/...)
+      const rawCed = newFarmer.cedula.trim();
+      const type = (newFarmer.docType || 'V').toUpperCase();
+      // Evitar duplicar prefijo si el usuario ya lo escribió
+      const cedulaConPrefijo = /^[VEJPGRCA]/i.test(rawCed) ? rawCed.toUpperCase() : `${type}${rawCed}`;
+
       // Insertar en Supabase (tabla farmers) con created_via: 'admin'
       const nombreCompleto = newFarmer.name.trim();
       const { error: insertError } = await supabase
@@ -96,7 +103,7 @@ const FarmerManagement = () => {
         .insert([
           {
             nombre_completo: nombreCompleto,
-            cedula: newFarmer.cedula.trim(),
+            cedula: cedulaConPrefijo,
             rif: newFarmer.rif.trim(),
             email: (newFarmer.email || '').trim(),
             telefono: (newFarmer.phone || '').trim(),
@@ -119,6 +126,7 @@ const FarmerManagement = () => {
       setShowNewFarmerForm(false);
       setNewFarmer({
         name: '',
+        docType: 'V',
         cedula: '',
         rif: '',
         organizationType: 'Individual',
@@ -298,18 +306,38 @@ const FarmerManagement = () => {
                       </div>
                       
                       <div>
-                        <label htmlFor="cedula" className="block text-sm font-medium text-gray-700">
-                          Cédula de identidad *
+                        <label className="block text-sm font-medium text-gray-700">
+                          Documento de identidad *
                         </label>
-                        <input
-                          type="text"
-                          id="cedula"
-                          name="cedula"
-                          value={newFarmer.cedula}
-                          onChange={handleInputChange}
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
-                          required
-                        />
+                        <div className="mt-1 flex gap-2">
+                          <select
+                            id="docType"
+                            name="docType"
+                            value={newFarmer.docType}
+                            onChange={handleInputChange}
+                            className="w-24 rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
+                          >
+                            <option value="V">V</option>
+                            <option value="E">E</option>
+                            <option value="J">J</option>
+                            <option value="P">P</option>
+                            <option value="G">G</option>
+                            <option value="R">R</option>
+                            <option value="C">C</option>
+                            <option value="A">A</option>
+                          </select>
+                          <input
+                            type="text"
+                            id="cedula"
+                            name="cedula"
+                            value={newFarmer.cedula}
+                            onChange={handleInputChange}
+                            placeholder="Ej: 10395700"
+                            className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
+                            required
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Se guardará como {`${newFarmer.docType || 'V'}${newFarmer.cedula || ''}`.toUpperCase()}</p>
                       </div>
                       
                       <div>
