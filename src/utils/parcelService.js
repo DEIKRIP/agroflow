@@ -1,5 +1,4 @@
 import { supabase } from '../lib/supabase';
-import api from '../lib/api';
 
 // Demo mode flag
 const DEMO = String(import.meta.env.VITE_DEMO_MODE || '').toLowerCase() === 'true';
@@ -237,13 +236,12 @@ const parcelService = {
         }
         return { success: true, data };
       }
-      // Use API to enforce validation & dedupe
-      const data = await api.post('/inspections', {
-        parcel_id,
-        priority,
-        scheduled_at,
-        metadata
+      // Use Supabase RPC to enforce validation & dedupe on the DB side
+      const { data, error } = await supabase.rpc('create_inspection_v2', {
+        p_parcel_id: parcel_id,
+        p_notes: (metadata && metadata.notes) ? String(metadata.notes) : null,
       });
+      if (error) return { success: false, error: error.message };
       return { success: true, data };
     } catch (e) {
       return { success: false, error: e?.message || 'Error al solicitar inspección' };

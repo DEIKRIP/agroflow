@@ -175,39 +175,25 @@ const inspectionService = {
         demoInspections.unshift(data);
         return { success: true, data };
       }
-      const { data, error } = await supabase
-        .from('inspections')
-        .insert([{
-          ...inspectionData,
-          scheduled_at: inspectionData.scheduled_at || null,
-          status: inspectionData.status || 'pendiente',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
-        .select(`
-          *,
-          parcel:parcels!parcel_id(
-            id, area_hectareas, cultivo_principal,
-            farmer:farmers!farmer_cedula(nombre_completo, farmer_cedula)
-          ),
-          inspector:user_profiles!inspector_id(full_name)
-        `)
-        .single();
+      // Use RPC to enforce validations (active parcel, dedupe) and snapshot metadata
+      const { data, error } = await supabase.rpc('create_inspection_v2', {
+        p_parcel_id: inspectionData.parcel_id,
+        p_notes: inspectionData.notes ?? null,
+      });
 
       if (error) {
         return { success: false, error: error.message };
       }
 
-      // Log activity
-      await supabase.rpc('log_activity', {
-        p_entity_type: 'inspection',
-        p_entity_id: data.id,
-        p_action: 'created',
-        p_details: { 
-          parcel_id: data.parcel_id,
-          status: data.status
-        }
-      });
+      // Best-effort activity log
+      try {
+        await supabase.rpc('log_activity', {
+          p_entity_type: 'inspection',
+          p_entity_id: data.id,
+          p_action: 'created',
+          p_details: { parcel_id: data.parcel_id, status: data.status },
+        });
+      } catch (_) {}
 
       return { success: true, data };
     } catch (error) {

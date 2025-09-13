@@ -136,6 +136,19 @@ yarn serve
 ### Despliegue en Vercel/Netlify
 El proyecto está configurado para ser desplegado directamente en plataformas como Vercel o Netlify. Simplemente conecta tu repositorio y configura las variables de entorno.
 
+## 🔄 Migración a Supabase RPC para Inspecciones
+
+La creación de inspecciones ha sido migrada desde una Netlify Function a un RPC en Supabase para centralizar reglas de negocio en la base de datos.
+
+- Nuevo flujo: el frontend llama `supabase.rpc('create_inspection_v2', { p_parcel_id, p_notes })` desde `inspectionService.createInspection()` y `parcelService.requestInspection()`.
+- Validaciones en DB: verifica que la parcela esté activa y evita duplicados (inspecciones abiertas).
+- Snapshot: el RPC guarda un `metadata.snapshot` de la parcela al momento de crear la inspección.
+
+Documentación detallada: `docs/INSPECTIONS_RPC.md`  
+SQL del RPC: `supabase/migrations/2025-09-12_create_inspection_v2.sql`
+
+Función Netlify deprecada: `netlify/functions/inspections.js`.
+
 ## 📄 Licencia
 Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más detalles.
 

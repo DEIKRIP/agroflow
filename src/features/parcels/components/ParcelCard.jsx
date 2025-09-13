@@ -38,7 +38,8 @@ const ParcelCard = ({
         .maybeSingle();
         
       if (!error && data) {
-        setHasRequestedInspection(['pending', 'scheduled', 'in_progress'].includes(data.status));
+        // Align with DB statuses: 'pendiente', 'programada', 'en_progreso'
+        setHasRequestedInspection(['pendiente', 'programada', 'en_progreso'].includes(data.status));
         setInspectionStatus(data.status);
       }
     };
