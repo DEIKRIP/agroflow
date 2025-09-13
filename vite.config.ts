@@ -4,11 +4,40 @@ import tsconfigPaths from 'vite-tsconfig-paths';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
+// Fix for CJS build deprecation warning
+process.env.VITE_CJS_IGNORE_WARNING = 'true';
+
 export default defineConfig({
   plugins: [
     react(), 
     tsconfigPaths(),
   ],
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    sourcemap: true,
+    target: 'esnext',
+    minify: 'terser',
+    chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('@radix-ui')) {
+              return 'vendor-radix';
+            }
+            if (id.includes('@tanstack')) {
+              return 'vendor-tanstack';
+            }
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              return 'vendor-react';
+            }
+            return 'vendor-other';
+          }
+        },
+      },
+    },
+  },
   server: {
     host: true,
     port: 3000,
