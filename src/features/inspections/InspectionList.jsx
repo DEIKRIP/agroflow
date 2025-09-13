@@ -9,21 +9,34 @@ import InspectionQueue from './components/InspectionQueue';
 import InspectionForm from './components/InspectionForm';
 import InspectionHistory from './components/InspectionHistory';
 import InspectionMap from './components/InspectionMap';
+import { useQueryClient } from '@tanstack/react-query';
+import inspectionService from '../../utils/inspectionService';
+import { toast } from 'react-hot-toast';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 const InspectionWorkflow = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedInspection, setSelectedInspection] = useState(null);
   const [activePanel, setActivePanel] = useState('form'); // form, history, map
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({});
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const { user, userProfile } = useAuth();
+  const email = String(user?.email || '').toLowerCase().trim();
+  const isAdmin = email === 'manzanillamadriddeiker@gmail.com';
+  const userRole = isAdmin ? 'admin' : (userProfile?.role || 'farmer');
+  const idFarmer = userProfile?.id_farmer || null;
 
-  // Mock user data
-  const user = {
-    role: 'operator',
-    permissions: ['view_inspections', 'create_inspections', 'approve_inspections']
-  };
+  // Debug log
+  console.log('InspectionList - User context:', {
+    email,
+    isAdmin,
+    userRole,
+    idFarmer
+  });
 
   // Filter configuration for search bar
   const filterConfig = [
@@ -101,24 +114,101 @@ const InspectionWorkflow = () => {
   };
 
   // Handle form actions
-  const handleSaveInspection = (formData) => {
-    console.log('Saving inspection:', formData);
-    // Implement save logic
+  const handleSaveInspection = async (formData) => {
+    if (!selectedInspection?.id) return;
+    // Save draft fields to a JSON column if available (e.g., form_data)
+    const { success, error, data } = await inspectionService.updateInspection(selectedInspection.id, {
+      form_data: formData,
+    });
+    if (!success) {
+      toast.error(error || 'No se pudo guardar el borrador');
+      return;
+    }
+    setSelectedInspection(prev => ({ ...prev, form_data: formData }));
+    toast.success('Borrador guardado');
   };
 
-  const handleSubmitInspection = (formData) => {
-    console.log('Submitting inspection for review:', formData);
-    // Implement submit logic
+  const handleSubmitInspection = async (formData) => {
+    if (!selectedInspection?.id) return;
+    const { success, error, data } = await inspectionService.updateInspection(selectedInspection.id, {
+      status: 'en_progreso',
+      form_data: formData,
+    });
+    if (!success) {
+      toast.error(error || 'No se pudo iniciar la inspección');
+      return;
+    }
+    setSelectedInspection(data);
+    toast.success('Inspección en marcha');
+    queryClient.invalidateQueries({ queryKey: ['inspections'] });
   };
 
-  const handleApproveInspection = (formData) => {
-    console.log('Approving inspection:', formData);
-    // Implement approval logic
+  const handleApproveInspection = async (formData) => {
+    if (!selectedInspection?.id) return;
+    const { success, error, data } = await inspectionService.updateInspection(selectedInspection.id, {
+      status: 'completada',
+      approval_notes: formData?.inspectorNotes || null,
+      completed_at: new Date().toISOString(),
+    });
+    if (!success) {
+      toast.error(error || 'No se pudo aprobar la inspección');
+      return;
+    }
+    setSelectedInspection(data);
+    toast.success('Inspección aprobada');
+    queryClient.invalidateQueries({ queryKey: ['inspections'] });
+
+    // 1) Upsert Sujeto Productivo (bolivarDigitalClients)
+    try {
+      const farmer = data?.farmer || selectedInspection?.farmer || {};
+      const parcel = data?.parcel || selectedInspection?.parcel || {};
+      const clientPayload = {
+        // Campos básicos; ajusta según tu esquema real
+        fullName: farmer.name || '',
+        cedula: (farmer.cedula || '').toString(),
+        rif: null,
+        phone: null,
+        activity: parcel.crop || null,
+        address: parcel.location || null,
+        // Opcional: marca de origen
+        created_via: 'inspection_approval',
+      };
+
+      if (!clientPayload.cedula) {
+        console.warn('No hay cédula para crear Sujeto Productivo');
+      } else {
+        const { error: upsertErr } = await supabase
+          .from('bolivarDigitalClients')
+          .upsert([clientPayload], { onConflict: 'cedula', ignoreDuplicates: false });
+
+        if (upsertErr) {
+          console.error('Error creando/actualizando Sujeto Productivo:', upsertErr);
+          toast.error('El Sujeto Productivo no pudo registrarse');
+        } else {
+          toast.success('Sujeto Productivo listo para financiamiento');
+        }
+      }
+    } catch (e) {
+      console.error('Fallo al registrar Sujeto Productivo:', e);
+      // Notificar de forma no bloqueante
+      toast('Inspección aprobada. No se pudo registrar el Sujeto Productivo automáticamente.');
+    }
   };
 
-  const handleRejectInspection = (formData) => {
-    console.log('Rejecting inspection:', formData);
-    // Implement rejection logic
+  const handleRejectInspection = async (formData) => {
+    if (!selectedInspection?.id) return;
+    const { success, error, data } = await inspectionService.updateInspection(selectedInspection.id, {
+      status: 'cancelada',
+      rejection_reason: formData?.observations || 'Rechazada por revisión',
+      cancelled_at: new Date().toISOString(),
+    });
+    if (!success) {
+      toast.error(error || 'No se pudo rechazar la inspección');
+      return;
+    }
+    setSelectedInspection(data);
+    toast.success('Inspección rechazada');
+    queryClient.invalidateQueries({ queryKey: ['inspections'] });
   };
 
   // Handle search and filters
@@ -144,7 +234,7 @@ const InspectionWorkflow = () => {
     <div className="min-h-screen bg-background">
       {/* Sidebar */}
       <RoleBasedSidebar
-        user={user}
+        userRole={userRole}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
@@ -229,6 +319,8 @@ const InspectionWorkflow = () => {
                 <InspectionQueue
                   onSelectInspection={handleSelectInspection}
                   selectedInspectionId={selectedInspection?.id}
+                  userRole={userRole}
+                  idFarmer={idFarmer}
                 />
               )}
               {activePanel === 'form' && (
@@ -256,6 +348,8 @@ const InspectionWorkflow = () => {
                   <InspectionQueue
                     onSelectInspection={handleSelectInspection}
                     selectedInspectionId={selectedInspection?.id}
+                    userRole={userRole}
+                    idFarmer={idFarmer}
                   />
                 </div>
               </div>

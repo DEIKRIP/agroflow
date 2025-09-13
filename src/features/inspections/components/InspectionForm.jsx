@@ -32,6 +32,8 @@ const InspectionForm = ({ inspection, onSave, onSubmit, onApprove, onReject }) =
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState('saved');
 
   const steps = [
@@ -168,6 +170,24 @@ const InspectionForm = ({ inspection, onSave, onSubmit, onApprove, onReject }) =
       await onSubmit(formData);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    setIsApproving(true);
+    try {
+      await onApprove(formData);
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleReject = async () => {
+    setIsRejecting(true);
+    try {
+      await onReject(formData);
+    } finally {
+      setIsRejecting(false);
     }
   };
 
@@ -493,22 +513,26 @@ const InspectionForm = ({ inspection, onSave, onSubmit, onApprove, onReject }) =
           <div className="flex space-x-2">
             <Button
               variant="success"
-              onClick={() => onApprove(formData)}
+              onClick={handleApprove}
               iconName="CheckCircle"
               iconPosition="left"
               size="sm"
+              loading={isApproving}
+              disabled={isApproving || isRejecting}
             >
-              Aprobar
+              {isApproving ? 'Aprobando…' : 'Aprobar'}
             </Button>
             
             <Button
               variant="destructive"
-              onClick={() => onReject(formData)}
+              onClick={handleReject}
               iconName="XCircle"
               iconPosition="left"
               size="sm"
+              loading={isRejecting}
+              disabled={isApproving || isRejecting}
             >
-              Rechazar
+              {isRejecting ? 'Rechazando…' : 'Rechazar'}
             </Button>
           </div>
         </div>

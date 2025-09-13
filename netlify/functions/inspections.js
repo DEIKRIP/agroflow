@@ -60,7 +60,7 @@ async function handler(event) {
   // 1) Load parcel and farmer relationship
   const { data: parcel, error: parcelErr } = await supabase
     .from('parcels')
-    .select('id, display_id, area_hectareas, cultivo_principal, farmer_cedula, ubicacion_lat, ubicacion_lng')
+    .select('id, display_id, area_hectareas, cultivo_principal, farmer_cedula, id_farmer, ubicacion_lat, ubicacion_lng')
     .eq('id', parcel_id)
     .single();
 
@@ -129,6 +129,7 @@ async function handler(event) {
   const response = {
     id: created.id,
     parcel_id: created.parcel_id,
+    id_farmer: parcel.id_farmer ?? null,
     farmer: farmer ? { id: farmer.cedula, name: farmer.nombre_completo, cedula: farmer.cedula } : null,
     parcel: { id: parcel.id, code: parcel.display_id || String(parcel.id), area_ha: parcel.area_hectareas ?? null },
     status: created.status,

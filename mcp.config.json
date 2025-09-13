@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "servers": {
+    "netlify": {
+      "enabled": true,
+      "env": {
+        "NETLIFY_AUTH_TOKEN": "${NETLIFY_AUTH_TOKEN}"
+      }
+    },
+    "supabase-mcp-server": {
+      "enabled": true,
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "sbp_1f3a8f423428cc92c214058c984cfd7a7706cb63"
+      ]
+    },
+    "github": {
+      "enabled": false,
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  },
+  "env": {
+    "VITE_SUPABASE_URL": "${VITE_SUPABASE_URL}",
+    "VITE_SUPABASE_ANON_KEY": "${VITE_SUPABASE_ANON_KEY}"
+  },
+  "notes": "Set the env variables in your IDE/runner. Enable or disable servers as needed."
+}

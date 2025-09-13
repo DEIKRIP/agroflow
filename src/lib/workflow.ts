@@ -18,33 +18,33 @@ export const financiamientoStates = {
 export const validTransitions: Record<string, WorkflowTransition[]> = {
   // Initial state
   draft: [
-    { from: ['draft'], to: 'pending_approval', roles: ['admin', 'operador'] },
-    { from: ['draft'], to: 'cancelled', roles: ['admin', 'operador'] },
+    { from: ['draft'], to: 'pending_approval', roles: ['admin', 'operator'] },
+    { from: ['draft'], to: 'cancelled', roles: ['admin', 'operator'] },
   ],
   
   // Pending approval
   pending_approval: [
     { from: ['pending_approval'], to: 'approved', roles: ['admin'] },
     { from: ['pending_approval'], to: 'rejected', roles: ['admin'] },
-    { from: ['pending_approval'], to: 'cancelled', roles: ['admin', 'operador'] },
+    { from: ['pending_approval'], to: 'cancelled', roles: ['admin', 'operator'] },
   ],
   
   // Approved
   approved: [
-    { from: ['approved'], to: 'in_progress', roles: ['admin', 'operador'] },
+    { from: ['approved'], to: 'in_progress', roles: ['admin', 'operator'] },
     { from: ['approved'], to: 'cancelled', roles: ['admin'] },
   ],
   
   // In progress
   in_progress: [
-    { from: ['in_progress'], to: 'completed', roles: ['admin', 'operador'] },
-    { from: ['in_progress'], to: 'on_hold', roles: ['admin', 'operador'] },
+    { from: ['in_progress'], to: 'completed', roles: ['admin', 'operator'] },
+    { from: ['in_progress'], to: 'on_hold', roles: ['admin', 'operator'] },
     { from: ['in_progress'], to: 'cancelled', roles: ['admin'] },
   ],
   
   // On hold
   on_hold: [
-    { from: ['on_hold'], to: 'in_progress', roles: ['admin', 'operador'] },
+    { from: ['on_hold'], to: 'in_progress', roles: ['admin', 'operator'] },
     { from: ['on_hold'], to: 'cancelled', roles: ['admin'] },
   ],
   

@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tsconfigPaths from 'vite-tsconfig-paths';
-import { resolve } from 'path';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 export default defineConfig({
   plugins: [
@@ -23,11 +24,12 @@ export default defineConfig({
     alias: [
       {
         find: '@',
-        replacement: resolve(__dirname, 'src')
+        // Use ESM-safe resolution instead of __dirname
+        replacement: fileURLToPath(new URL('./src', import.meta.url))
       },
       {
         find: 'leaflet.css',
-        replacement: resolve('node_modules/leaflet/dist/leaflet.css')
+        replacement: fileURLToPath(new URL('./node_modules/leaflet/dist/leaflet.css', import.meta.url))
       }
     ],
   },

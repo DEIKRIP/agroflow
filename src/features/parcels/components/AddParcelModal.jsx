@@ -8,13 +8,15 @@ import { toast } from 'react-hot-toast';
 
 const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'productor', farmerCedula = null }) => {
   const [formData, setFormData] = useState({
+    // New schema fields
+    farmer_id: '',
     name: '',
-    farmerId: '',
-    latitude: '',
-    longitude: '',
-    area: '',
-    soilType: '',
-    primaryCrop: '',
+    area_hectares: '',
+    lat: '',
+    lng: '',
+    primary_crop: '',
+    soil_type: '',
+    planting_date: '',
     description: ''
   });
 
@@ -47,8 +49,8 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
   ];
 
   const farmerOptions = farmers.map(farmer => ({
-    value: farmer.cedula || farmer.id,
-    label: `${farmer.nombre_completo || farmer.name} - ${farmer.cedula}`
+    value: farmer.id,
+    label: `${farmer.full_name || farmer.nombre_completo || farmer.name || 'Sin nombre'}${farmer.cedula ? ` - ${farmer.cedula}` : ''}`
   }));
 
   const handleInputChange = (field, value) => {
@@ -63,14 +65,34 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
     setIsLoading(true);
     try {
       // Validaciones mínimas
-      const ced = farmerCedula || formData.farmerId;
-      if (!ced && userRole !== 'productor') {
-        setErrors(prev => ({ ...prev, farmerId: 'Seleccione un agricultor' }));
+      // Require farmer_id for admin/operator; for farmer role, parent may infer it
+      if (!formData.farmer_id && userRole !== 'productor') {
+        setErrors(prev => ({ ...prev, farmer_id: 'Seleccione un agricultor' }));
         return;
       }
 
+      // Validación: área > 0 si se proporciona
+      if (formData.area_hectares !== '' && formData.area_hectares !== null) {
+        const areaNum = parseFloat(formData.area_hectares);
+        if (isNaN(areaNum) || areaNum <= 0) {
+          setErrors(prev => ({ ...prev, area_hectares: 'El área debe ser un número mayor a 0' }));
+          return;
+        }
+      }
+
+      // Validación: fecha de siembra no puede ser futura
+      if (formData.planting_date) {
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const dateVal = new Date(formData.planting_date);
+        if (dateVal > today) {
+          setErrors(prev => ({ ...prev, planting_date: 'La fecha no puede ser futura' }));
+          return;
+        }
+      }
+
       // Advertencia suave si no hay coordenadas, pero no bloquear
-      if (!formData.latitude || !formData.longitude) {
+      if (!formData.lat || !formData.lng) {
         toast('Registrando sin coordenadas. Puede asignarlas luego desde edición.', { icon: 'ℹ️' });
       }
 
@@ -94,15 +116,15 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
 
       // Mapear a esquema real de BD
       const payload = {
-        nombre: formData.name || null,
-        farmer_cedula: ced || null,
-        ubicacion_lat: formData.latitude ? parseFloat(formData.latitude) : null,
-        ubicacion_lng: formData.longitude ? parseFloat(formData.longitude) : null,
-        area_hectareas: formData.area ? parseFloat(formData.area) : null,
-        tipo_suelo: normalizeEnum(formData.soilType),
-        cultivo_principal: normalizeEnum(formData.primaryCrop),
-        fecha_siembra: formData.plantingDate || null,
-        descripcion: formData.description || null
+        farmer_id: formData.farmer_id || null,
+        name: formData.name || null,
+        area_hectares: formData.area_hectares ? parseFloat(formData.area_hectares) : null,
+        soil_type: normalizeEnum(formData.soil_type),
+        primary_crop: normalizeEnum(formData.primary_crop),
+        planting_date: formData.planting_date || null,
+        description: formData.description || null,
+        lat: formData.lat ? parseFloat(formData.lat) : null,
+        lng: formData.lng ? parseFloat(formData.lng) : null,
       };
       await onSave(payload);
       onClose();
@@ -118,8 +140,8 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          handleInputChange('latitude', position.coords.latitude);
-          handleInputChange('longitude', position.coords.longitude);
+          handleInputChange('lat', position.coords.latitude);
+          handleInputChange('lng', position.coords.longitude);
           if (typeof position.coords.accuracy === 'number') {
             setGeoAccuracy(position.coords.accuracy);
           }
@@ -184,14 +206,14 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
                   error={errors.name}
                   required
                 />
-                {(!farmerCedula && userRole !== 'productor') && (
+                {userRole !== 'productor' && (
                   <Select
                     label="Agricultor"
                     options={farmerOptions}
-                    value={formData.farmerId}
-                    onChange={(value) => handleInputChange('farmerId', value)}
+                    value={formData.farmer_id}
+                    onChange={(value) => handleInputChange('farmer_id', value)}
                     placeholder="Seleccionar agricultor"
-                    error={errors.farmerId}
+                    error={errors.farmer_id}
                     required
                     searchable
                   />
@@ -232,8 +254,8 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
                   label="Latitud"
                   type="number"
                   step="any"
-                  value={formData.latitude}
-                  onChange={(e) => handleInputChange('latitude', e.target.value)}
+                  value={formData.lat}
+                  onChange={(e) => handleInputChange('lat', e.target.value)}
                   placeholder="Ej: 10.4806"
                   icon="MapPin"
                 />
@@ -241,8 +263,8 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
                   label="Longitud"
                   type="number"
                   step="any"
-                  value={formData.longitude}
-                  onChange={(e) => handleInputChange('longitude', e.target.value)}
+                  value={formData.lng}
+                  onChange={(e) => handleInputChange('lng', e.target.value)}
                   placeholder="Ej: -66.9036"
                   icon="MapPin"
                 />
@@ -250,12 +272,12 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
               {showMap && (
                 <div className="h-64 md:h-80 rounded-lg overflow-hidden border border-border">
                   <MapPicker
-                    value={formData.latitude && formData.longitude 
-                      ? { latitude: formData.latitude, longitude: formData.longitude } 
+                    value={formData.lat && formData.lng 
+                      ? { latitude: formData.lat, longitude: formData.lng } 
                       : null}
                     onChange={({ latitude, longitude }) => {
-                      handleInputChange('latitude', latitude);
-                      handleInputChange('longitude', longitude);
+                      handleInputChange('lat', latitude);
+                      handleInputChange('lng', longitude);
                     }}
                     className="h-full w-full"
                     accuracy={geoAccuracy}
@@ -277,33 +299,33 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
                   label="Área (hectáreas)"
                   type="number"
                   step="0.01"
-                  value={formData.area}
-                  onChange={(e) => handleInputChange('area', e.target.value)}
+                  value={formData.area_hectares}
+                  onChange={(e) => handleInputChange('area_hectares', e.target.value)}
                   placeholder="Ej: 5.2"
-                  error={errors.area}
+                  error={errors.area_hectares}
                 />
                 <Select
                   label="Tipo de Suelo"
                   options={soilOptions}
-                  value={formData.soilType}
-                  onChange={(value) => handleInputChange('soilType', value)}
+                  value={formData.soil_type}
+                  onChange={(value) => handleInputChange('soil_type', value)}
                   placeholder="Seleccionar tipo de suelo"
-                  error={errors.soilType}
+                  error={errors.soil_type}
                 />
                 <Select
                   label="Cultivo Principal"
                   options={cropOptions}
-                  value={formData.primaryCrop}
-                  onChange={(value) => handleInputChange('primaryCrop', value)}
+                  value={formData.primary_crop}
+                  onChange={(value) => handleInputChange('primary_crop', value)}
                   placeholder="Seleccionar cultivo"
-                  error={errors.primaryCrop}
+                  error={errors.primary_crop}
                 />
                 <Input
                   label="Fecha de Siembra"
                   type="date"
-                  value={formData.plantingDate}
-                  onChange={(e) => handleInputChange('plantingDate', e.target.value)}
-                  error={errors.plantingDate}
+                  value={formData.planting_date}
+                  onChange={(e) => handleInputChange('planting_date', e.target.value)}
+                  error={errors.planting_date}
                 />
               </div>
               
@@ -346,14 +368,14 @@ const AddParcelModal = ({ isOpen, onClose, onSave, farmers = [], userRole = 'pro
             </div>
             <div className="flex-1">
               <MapPicker
-                value={formData.latitude && formData.longitude ? { latitude: parseFloat(formData.latitude), longitude: parseFloat(formData.longitude) } : null}
+                value={formData.lat && formData.lng ? { latitude: parseFloat(formData.lat), longitude: parseFloat(formData.lng) } : null}
                 onChange={(coords) => {
                   if (!coords) return;
-                  handleInputChange('latitude', coords.latitude);
-                  handleInputChange('longitude', coords.longitude);
+                  handleInputChange('lat', coords.latitude);
+                  handleInputChange('lng', coords.longitude);
                 }}
                 height="100%"
-                zoom={formData.latitude && formData.longitude ? 15 : 10}
+                zoom={formData.lat && formData.lng ? 15 : 10}
                 accuracy={geoAccuracy}
               />
             </div>

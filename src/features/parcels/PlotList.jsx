@@ -25,8 +25,25 @@ const ParcelManagement = () => {
   const [inspectionRequested, setInspectionRequested] = useState({}); // parcelId -> true
 
   const { userProfile } = useAuth();
-  const userRole = userProfile?.role || 'productor';
-  const farmerCedula = userProfile?.farmer_cedula || null;
+  const normalizeRole = (r) => {
+    switch (String(r || '').toLowerCase().trim()) {
+      case 'admin':
+      case 'administrator':
+        return 'admin';
+      case 'operador':
+      case 'operator':
+        return 'operator';
+      case 'agricultor':
+      case 'farmer':
+      case 'productor':
+      case 'producer':
+        return 'farmer';
+      default:
+        return 'farmer';
+    }
+  };
+  const userRole = normalizeRole(userProfile?.role);
+  const farmerCedula = userProfile?.farmer_cedula || null; // legacy fallback
 
   const [farmers, setFarmers] = useState([]);
 
@@ -40,23 +57,29 @@ const ParcelManagement = () => {
     const loadParcels = async () => {
       try {
         setIsLoading(true);
-        const filters = (userRole === 'productor' && farmerCedula) ? { farmer_cedula: farmerCedula } : {};
+        const idFarmer = userProfile?.id_farmer || userProfile?.farmer_id || null; // prefer new ids
+        const filters = (userRole === 'farmer')
+          ? (idFarmer ? { id_farmer: idFarmer } : (farmerCedula ? { farmer_cedula: farmerCedula } : {}))
+          : {};
         const res = await parcelService.getParcels(filters);
         if (!res.success) throw new Error(res.error);
         const mapped = (res.data || []).map(p => ({
           id: p.id,
-          name: p.nombre || `Parcela ${p.display_id || ''}`,
-          farmerId: p.farmer_cedula,
-          farmerName: p.farmer?.nombre_completo || p.farmer_cedula,
-          latitude: p.ubicacion_lat,
-          longitude: p.ubicacion_lng,
-          area: p.area_hectareas,
-          soilType: p.tipo_suelo,
-          primaryCrop: p.cultivo_principal,
-          status: p.estado || 'Activo',
-          plantingDate: p.fecha_siembra,
-          lastInspection: p.inspections?.[0]?.fecha_inspeccion || null,
-          createdAt: p.created_at
+          name: p.name || p.nombre || `Parcela ${p.display_id || ''}`,
+          // Prefer new schema farmer_id; fallback to legacy farmer_cedula
+          farmerId: p.farmer_id || p.farmer_cedula || p.farmerId || null,
+          farmerName: p.farmer?.full_name || p.farmer?.nombre_completo || p.farmer_name || p.farmer_cedula || '—',
+          farmerAvatar: p.farmer?.profile_image_url || null,
+          latitude: p.lat ?? p.location_lat ?? p.latitude ?? p.ubicacion_lat ?? null,
+          longitude: p.lng ?? p.location_lng ?? p.longitude ?? p.ubicacion_lng ?? null,
+          area: p.area_hectares ?? p.surface_area ?? p.area_hectareas ?? p.area ?? null,
+          soilType: p.soil_type || p.tipo_suelo || null,
+          primaryCrop: p.primary_crop ?? p.crop_type ?? p.cultivo_principal ?? null,
+          status: (typeof p.is_active === 'boolean') ? (p.is_active ? 'Activo' : 'Inactivo') : (p.status || p.estado || 'Activo'),
+          plantingDate: p.planting_date || p.fecha_siembra || null,
+          lastInspection: p.inspections?.[0]?.fecha_inspeccion || p.last_inspection || null,
+          createdAt: p.created_at,
+          updatedAt: p.updated_at || null
         }));
         setParcels(mapped);
         setFilteredParcels(mapped);
@@ -74,12 +97,50 @@ const ParcelManagement = () => {
   // Load farmers for admin/operator selector
   useEffect(() => {
     const loadFarmers = async () => {
-      if (userRole === 'productor') return;
-      const { data, error } = await supabase
-        .from('farmers')
-        .select('cedula, nombre_completo')
-        .order('display_id', { ascending: true });
-      if (!error) setFarmers(data || []);
+      if (userRole === 'farmer') return;
+      try {
+        const { data, error } = await supabase
+          .from('farmers')
+          .select('id, user_id, full_name, cedula');
+
+        if (error) {
+          console.error('Error loading farmers:', error);
+          toast.error('No se pudieron cargar los agricultores');
+        }
+
+        let list = data || [];
+        // Ordenar en cliente si contamos con full_name
+        list = Array.isArray(list)
+          ? [...list].sort((a,b) => String(a.full_name||'').localeCompare(String(b.full_name||'')))
+          : [];
+
+        // Fallback: si aún no existen filas en farmers, intentamos con users_profiles (rol productor)
+        if (!error && (!list || list.length === 0)) {
+          const { data: up, error: err2 } = await supabase
+            .from('users_profiles')
+            .select('id, full_name, role')
+            .eq('role', 'productor');
+
+          if (err2) {
+            console.warn('Fallback users_profiles failed:', err2);
+          } else if (up && up.length > 0) {
+            list = (up || []).sort((a,b)=>String(a.full_name||'').localeCompare(String(b.full_name||''))).map((u) => ({
+              id: u.id, // usamos el id de user como identificador temporal
+              user_id: u.id,
+              full_name: u.full_name,
+              nombre_completo: u.full_name,
+              cedula: null,
+              farmer_cedula: null,
+            }));
+          }
+        }
+
+        setFarmers(list || []);
+      } catch (e) {
+        console.error('Unexpected error loading farmers:', e);
+        toast.error('Ocurrió un error al cargar agricultores');
+        setFarmers([]);
+      }
     };
     loadFarmers();
   }, [userRole]);
@@ -163,14 +224,28 @@ const ParcelManagement = () => {
   };
 
   const handleAddParcel = async (payload) => {
-    const res = await parcelService.createParcel(payload);
+    // Asegurar farmer_id para rol agricultor
+    const enriched = { ...payload };
+    try {
+      if (userRole === 'farmer' && !enriched.farmer_id) {
+        const idFarmer = userProfile?.id_farmer || userProfile?.farmer_id || null;
+        if (idFarmer) {
+          enriched.farmer_id = idFarmer;
+        } else {
+          toast.error('No se pudo determinar el agricultor asociado. Completa tu perfil e inténtalo nuevamente.');
+          return;
+        }
+      }
+    } catch (_) {}
+
+    const res = await parcelService.createParcel(enriched);
     if (!res.success) {
       toast.error(res.error || 'No se pudo crear la parcela');
       return;
     }
     toast.success('Parcela creada correctamente');
     // refresh list
-    const filters = (userRole === 'productor' && farmerCedula) ? { farmer_cedula: farmerCedula } : {};
+    const filters = (userRole === 'farmer' && farmerCedula) ? { farmer_cedula: farmerCedula } : {};
     const list = await parcelService.getParcels(filters);
     if (list.success) {
       const mapped = (list.data || []).map(p => ({
@@ -178,6 +253,7 @@ const ParcelManagement = () => {
         name: p.nombre || `Parcela ${p.display_id || ''}`,
         farmerId: p.farmer_cedula,
         farmerName: p.farmer?.nombre_completo || p.farmer_cedula,
+        farmerAvatar: p.farmer?.profile_image_url || null,
         latitude: p.ubicacion_lat,
         longitude: p.ubicacion_lng,
         area: p.area_hectareas,

@@ -1,9 +1,76 @@
 import { supabase } from '../lib/supabase';
 
+// Demo mode flag
+const DEMO = String(import.meta.env.VITE_DEMO_MODE || '').toLowerCase() === 'true';
+
+// Mock data for demo mode
+const demoFarmers = [
+  {
+    cedula: 'V10395700',
+    farmer_cedula: 'V10395700',
+    display_id: 'F-0001',
+    nombre_completo: 'Juan Pérez',
+    email: 'juan.perez@example.com',
+    telefono: '+58 412-1234567',
+    risk: 'medio',
+    created_by: 'demo-user-id',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    parcels: [{ count: 2, display_id: 'P-0001' }],
+    financings: [{ count: 1, display_id: 'C-0001' }],
+    created_by_profile: { full_name: 'Demo Admin' },
+  },
+  {
+    cedula: 'V20456789',
+    farmer_cedula: 'V20456789',
+    display_id: 'F-0002',
+    nombre_completo: 'María González',
+    email: 'maria.gonzalez@example.com',
+    telefono: '+58 416-9876543',
+    risk: 'bajo',
+    created_by: 'demo-user-id',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    parcels: [{ count: 1, display_id: 'P-0003' }],
+    financings: [{ count: 0, display_id: 'C-0002' }],
+    created_by_profile: { full_name: 'Demo Admin' },
+  },
+];
+
 const farmerService = {
   // Get all farmers with pagination and filters
   getFarmers: async (filters = {}, page = 1, limit = 20) => {
     try {
+      if (DEMO) {
+        // Simple filter/search
+        let data = demoFarmers;
+        if (filters?.search) {
+          const s = String(filters.search).toLowerCase();
+          data = data.filter(
+            (f) =>
+              f.nombre_completo.toLowerCase().includes(s) ||
+              String(f.cedula).toLowerCase().includes(s) ||
+              String(f.email).toLowerCase().includes(s)
+          );
+        }
+        if (filters?.risk) {
+          data = data.filter((f) => f.risk === filters.risk);
+        }
+        const total = data.length;
+        const from = (page - 1) * limit;
+        const to = from + limit;
+        const slice = data.slice(from, to);
+        return {
+          success: true,
+          data: slice,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.max(1, Math.ceil(total / limit)),
+          },
+        };
+      }
       let query = supabase
         .from('farmers')
         .select(`
@@ -59,6 +126,11 @@ const farmerService = {
   // Get farmer by cedula
   getFarmerByCedula: async (cedula) => {
     try {
+      if (DEMO) {
+        const found = demoFarmers.find((f) => String(f.cedula) === String(cedula));
+        if (!found) return { success: false, error: 'No encontrado' };
+        return { success: true, data: found };
+      }
       const { data, error } = await supabase
         .from('farmers')
         .select(`
@@ -84,6 +156,17 @@ const farmerService = {
   // Create new farmer
   createFarmer: async (farmerData) => {
     try {
+      if (DEMO) {
+        const data = {
+          ...farmerData,
+          cedula: farmerData?.cedula || farmerData?.farmer_cedula || `V${Math.floor(Math.random()*9000000+1000000)}`,
+          display_id: `F-${String(demoFarmers.length + 1).padStart(4,'0')}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        demoFarmers.push(data);
+        return { success: true, data };
+      }
       const { data, error } = await supabase
         .from('farmers')
         .insert([{
@@ -115,6 +198,12 @@ const farmerService = {
   // Update farmer
   updateFarmer: async (cedula, updates) => {
     try {
+      if (DEMO) {
+        const idx = demoFarmers.findIndex((f) => String(f.cedula) === String(cedula));
+        if (idx === -1) return { success: false, error: 'No encontrado' };
+        demoFarmers[idx] = { ...demoFarmers[idx], ...updates, updated_at: new Date().toISOString() };
+        return { success: true, data: demoFarmers[idx] };
+      }
       const { data, error } = await supabase
         .from('farmers')
         .update({ 
@@ -146,6 +235,12 @@ const farmerService = {
   // Delete farmer
   deleteFarmer: async (cedula) => {
     try {
+      if (DEMO) {
+        const idx = demoFarmers.findIndex((f) => String(f.cedula) === String(cedula));
+        if (idx === -1) return { success: false, error: 'No encontrado' };
+        demoFarmers.splice(idx, 1);
+        return { success: true };
+      }
       const { error } = await supabase
         .from('farmers')
         .delete()
@@ -164,6 +259,18 @@ const farmerService = {
   // Get farmer statistics
   getFarmerStats: async () => {
     try {
+      if (DEMO) {
+        const data = demoFarmers;
+        const stats = {
+          total: data.length,
+          risk_breakdown: {
+            bajo: data.filter((f) => f.risk === 'bajo').length,
+            medio: data.filter((f) => f.risk === 'medio').length,
+            alto: data.filter((f) => f.risk === 'alto').length,
+          },
+        };
+        return { success: true, data: stats };
+      }
       const { data, error } = await supabase
         .from('farmers')
         .select('risk');
@@ -190,6 +297,30 @@ const farmerService = {
   // Get recent activity
   getRecentActivity: async (limit = 10) => {
     try {
+      if (DEMO) {
+        const now = new Date().toISOString();
+        const data = [
+          {
+            id: 'act-1',
+            entity_type: 'farmer',
+            performed_by: 'demo-user-id',
+            performer: { full_name: 'Demo Admin', role: 'admin' },
+            action: 'created',
+            details: { name: demoFarmers[0]?.nombre_completo },
+            created_at: now,
+          },
+          {
+            id: 'act-2',
+            entity_type: 'farmer',
+            performed_by: 'demo-user-id',
+            performer: { full_name: 'Demo Admin', role: 'admin' },
+            action: 'updated',
+            details: { fields_updated: ['telefono'] },
+            created_at: now,
+          },
+        ].slice(0, limit);
+        return { success: true, data };
+      }
       const { data, error } = await supabase
         .from('activity_log')
         .select(`

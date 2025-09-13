@@ -51,7 +51,7 @@ export function onAuthStateChange(callback: Parameters<typeof auth.onAuthStateCh
   return auth.onAuthStateChange(callback);
 }
 
-// Perfil de usuario (tabla user_profiles)
+// Perfil de usuario (tabla users_profiles)
 export async function getUserProfile(userId: string) {
-  return supabase.from('user_profiles').select('*').eq('id', userId).single();
+  return supabase.from('users_profiles').select('*').eq('id', userId).single();
 }

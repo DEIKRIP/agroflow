@@ -11,7 +11,7 @@ const FarmerCard = ({ farmer, onViewDetails }) => {
 
   // Format data
   const profile = farmer.photo || defaultProfile;
-  const name = farmer.nombre_completo || farmer.name || 'Sin nombre';
+  const name = farmer.full_name || farmer.nombre_completo || farmer.name || 'Sin nombre';
   const displayId = farmer.display_id ? `#${farmer.display_id}` : '';
   const cedula = formatCedula(farmer.cedula) || 'Sin C.I.';
   const status = farmer.status || farmer.estado || 'active';
@@ -21,7 +21,7 @@ const FarmerCard = ({ farmer, onViewDetails }) => {
   const location = farmer.location || 'Sin ubicación';
   const registrationDate = formatDate(farmer.registrationDate || farmer.fecha_registro);
   const phone = farmer.phone || farmer.telefono || 'Sin teléfono';
-  const email = farmer.email || 'Sin correo';
+  const email = farmer.email || farmer.correo || 'Sin correo';
   const parcels = farmer.parcelsCount ?? 0;
   const inspections = farmer.inspectionsCount ?? 0;
   const balance = farmer.lastFinancingAmount ?? 0;

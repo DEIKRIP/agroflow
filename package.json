@@ -2,7 +2,7 @@
   "name": "siembrapais",
   "version": "0.1.0",
   "private": true,
-  "rocketCritical": {
+  "rockedCritical": {
     "dependencies": [
       "@dhiwise/component-tagger",
       "react",

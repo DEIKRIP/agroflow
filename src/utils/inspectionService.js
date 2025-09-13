@@ -1,16 +1,77 @@
 import { supabase } from '../lib/supabase';
 
+// Demo mode flag
+const DEMO = String(import.meta.env.VITE_DEMO_MODE || '').toLowerCase() === 'true';
+
+// Mock data for demo mode
+const demoInspections = [
+  {
+    id: 'i-1',
+    display_id: 'I-0001',
+    parcel_id: 'p-1',
+    status: 'completada',
+    estado: 'completada',
+    scheduled_at: '2025-06-10',
+    fecha_inspeccion: '2025-06-15',
+    calificacion_calidad: 4,
+    inspector_id: 'demo-user-id',
+    inspector: { full_name: 'Demo Admin', role: 'admin' },
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    parcel: {
+      id: 'p-1',
+      display_id: 'P-0001',
+      area_hectareas: 12.5,
+      cultivo_principal: 'maiz',
+      tipo_suelo: 'franco',
+      farmer: { nombre_completo: 'Juan Pérez', farmer_cedula: 'V10395700', display_id: 'F-0001' },
+    },
+  },
+  {
+    id: 'i-2',
+    display_id: 'I-0002',
+    parcel_id: 'p-3',
+    status: 'pendiente',
+    estado: 'pendiente',
+    scheduled_at: '2025-09-20',
+    fecha_inspeccion: null,
+    calificacion_calidad: null,
+    inspector_id: 'demo-user-id',
+    inspector: { full_name: 'Demo Admin', role: 'admin' },
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    parcel: {
+      id: 'p-3',
+      display_id: 'P-0003',
+      area_hectareas: 4.8,
+      cultivo_principal: 'arroz',
+      tipo_suelo: 'arcilloso',
+      farmer: { nombre_completo: 'María González', farmer_cedula: 'V20456789', display_id: 'F-0002' },
+    },
+  },
+];
+
 const inspectionService = {
   // Get inspections with filters
   getInspections: async (filters = {}) => {
     try {
+      if (DEMO) {
+        let data = demoInspections.map((x) => ({ ...x }));
+        if (filters?.status) data = data.filter((i) => i.status === filters.status || i.estado === filters.status);
+        if (filters?.inspector_id) data = data.filter((i) => i.inspector_id === filters.inspector_id);
+        if (filters?.parcel_id) data = data.filter((i) => i.parcel_id === filters.parcel_id);
+        if (filters?.farmer_cedula) data = data.filter((i) => i.parcel?.farmer?.farmer_cedula === filters.farmer_cedula);
+        if (filters?.fecha_desde) data = data.filter((i) => !i.scheduled_at || i.scheduled_at >= filters.fecha_desde);
+        if (filters?.fecha_hasta) data = data.filter((i) => !i.scheduled_at || i.scheduled_at <= filters.fecha_hasta);
+        return { success: true, data };
+      }
       let query = supabase
         .from('inspections')
         .select(`
           *,
           parcel:parcels!parcel_id(
             id, display_id, area_hectareas, cultivo_principal, tipo_suelo,
-            farmer:farmers!farmer_cedula(nombre_completo, cedula, display_id)
+            farmer:farmers!farmer_cedula(nombre_completo, farmer_cedula, display_id)
           ),
           inspector:user_profiles!inspector_id(full_name, role)
         `)
@@ -62,6 +123,11 @@ const inspectionService = {
   // Get single inspection
   getInspection: async (inspectionId) => {
     try {
+      if (DEMO) {
+        const found = demoInspections.find((i) => String(i.id) === String(inspectionId) || String(i.display_id) === String(inspectionId));
+        if (!found) return { success: false, error: 'No encontrado' };
+        return { success: true, data: { ...found } };
+      }
       const { data, error } = await supabase
         .from('inspections')
         .select(`
@@ -88,6 +154,27 @@ const inspectionService = {
   // Create inspection
   createInspection: async (inspectionData) => {
     try {
+      if (DEMO) {
+        const id = `i-${Math.floor(Math.random()*100000)}`;
+        const display_id = id.toUpperCase();
+        const data = {
+          id,
+          display_id,
+          status: inspectionData.status || 'pendiente',
+          estado: inspectionData.status || 'pendiente',
+          scheduled_at: inspectionData.scheduled_at || null,
+          fecha_inspeccion: inspectionData.scheduled_at || null,
+          calificacion_calidad: inspectionData.calificacion_calidad ?? null,
+          inspector_id: inspectionData.inspector_id || 'demo-user-id',
+          parcel_id: inspectionData.parcel_id,
+          inspector: { full_name: 'Demo Admin' },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          parcel: { id: inspectionData.parcel_id },
+        };
+        demoInspections.unshift(data);
+        return { success: true, data };
+      }
       const { data, error } = await supabase
         .from('inspections')
         .insert([{
@@ -101,7 +188,7 @@ const inspectionService = {
           *,
           parcel:parcels!parcel_id(
             id, area_hectareas, cultivo_principal,
-            farmer:farmers!farmer_cedula(nombre_completo, cedula)
+            farmer:farmers!farmer_cedula(nombre_completo, farmer_cedula)
           ),
           inspector:user_profiles!inspector_id(full_name)
         `)
@@ -131,6 +218,12 @@ const inspectionService = {
   // Update inspection
   updateInspection: async (inspectionId, updates) => {
     try {
+      if (DEMO) {
+        const idx = demoInspections.findIndex((i) => String(i.id) === String(inspectionId) || String(i.display_id) === String(inspectionId));
+        if (idx === -1) return { success: false, error: 'No encontrado' };
+        demoInspections[idx] = { ...demoInspections[idx], ...updates, updated_at: new Date().toISOString(), estado: updates.status || demoInspections[idx].estado };
+        return { success: true, data: demoInspections[idx] };
+      }
       const { data, error } = await supabase
         .from('inspections')
         .update({ 
@@ -172,6 +265,12 @@ const inspectionService = {
   // Delete inspection
   deleteInspection: async (inspectionId) => {
     try {
+      if (DEMO) {
+        const idx = demoInspections.findIndex((i) => String(i.id) === String(inspectionId) || String(i.display_id) === String(inspectionId));
+        if (idx === -1) return { success: false, error: 'No encontrado' };
+        demoInspections.splice(idx, 1);
+        return { success: true };
+      }
       const { error } = await supabase
         .from('inspections')
         .delete()
@@ -190,6 +289,31 @@ const inspectionService = {
   // Get inspection statistics
   getInspectionStats: async () => {
     try {
+      if (DEMO) {
+        const data = demoInspections;
+        const now = new Date();
+        const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const stats = {
+          total: data.length,
+          by_status: {},
+          this_month: data.filter((i) => new Date(i.scheduled_at || i.created_at) >= thisMonth).length,
+          average_quality: 0,
+          quality_distribution: {},
+        };
+        data.forEach((i) => {
+          const status = i.status || i.estado;
+          stats.by_status[status] = (stats.by_status[status] || 0) + 1;
+          if (i.calificacion_calidad) {
+            const q = i.calificacion_calidad;
+            stats.quality_distribution[q] = (stats.quality_distribution[q] || 0) + 1;
+          }
+        });
+        const qualityRatings = data.filter((i) => i.calificacion_calidad).map((i) => i.calificacion_calidad);
+        if (qualityRatings.length) {
+          stats.average_quality = qualityRatings.reduce((s, r) => s + r, 0) / qualityRatings.length;
+        }
+        return { success: true, data: stats };
+      }
       const { data, error } = await supabase
         .from('inspections')
         .select('status, calificacion_calidad, scheduled_at');
@@ -235,13 +359,17 @@ const inspectionService = {
   // Get pending inspections (queue)
   getPendingInspections: async () => {
     try {
+      if (DEMO) {
+        const data = demoInspections.filter((i) => (i.status || i.estado) === 'pendiente');
+        return { success: true, data };
+      }
       const { data, error } = await supabase
         .from('inspections')
         .select(`
           *,
           parcel:parcels!parcel_id(
             id, area_hectareas, cultivo_principal, ubicacion_lat, ubicacion_lng,
-            farmer:farmers!farmer_cedula(nombre_completo, cedula, telefono)
+            farmer:farmers!farmer_cedula(nombre_completo, farmer_cedula, telefono)
           )
         `)
         .eq('status', 'pendiente')
@@ -260,13 +388,17 @@ const inspectionService = {
   // Get inspections by inspector
   getInspectionsByInspector: async (inspectorId) => {
     try {
+      if (DEMO) {
+        const data = demoInspections.filter((i) => i.inspector_id === inspectorId);
+        return { success: true, data };
+      }
       const { data, error } = await supabase
         .from('inspections')
         .select(`
           *,
           parcel:parcels!parcel_id(
             id, area_hectareas, cultivo_principal,
-            farmer:farmers!farmer_cedula(nombre_completo, cedula)
+            farmer:farmers!farmer_cedula(nombre_completo, farmer_cedula)
           )
         `)
         .eq('inspector_id', inspectorId)

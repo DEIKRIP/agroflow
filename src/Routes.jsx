@@ -3,6 +3,7 @@ import { BrowserRouter, Routes as RouterRoutes, Route, Navigate, useLocation } f
 import ScrollToTop from 'components/ScrollToTop';
 import ErrorBoundary from 'components/ErrorBoundary';
 import { useAuth } from './contexts/AuthContext';
+import { normalizeRole } from './components/layout/RoleBasedSidebar.jsx';
 
 // Auth Components
 import Login from 'pages/login';
@@ -32,23 +33,47 @@ const ProtectedRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" state={{ from: location }} replace />;
 };
 
-// Restricción por rol (admin, operador, productor)
+// Restricción por rol (Admin, Operator, Farmer)
 const RoleRoute = ({ roles = [], children }) => {
-  const { userProfile, loading } = useAuth();
+  const { user, userProfile, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen">Cargando...</div>;
   }
 
-  // Si no hay perfil, redirigir a login (o mantener lógica de ProtectedRoute arriba)
-  if (!userProfile) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  // Check for hardcoded admin email
+  const email = String(user?.email || '').toLowerCase().trim();
+  const isHardcodedAdmin = email === 'manzanillamadriddeiker@gmail.com';
+  
+  // Log role information for debugging
+  console.log('RoleRoute - Access Check:', {
+    email,
+    userRole: userProfile?.role,
+    isHardcodedAdmin,
+    requiredRoles: roles,
+    path: location.pathname
+  });
+
+  // Admin has access to everything
+  if (isHardcodedAdmin) {
+    console.log('RoleRoute - Admin access granted to', location.pathname);
+    return children;
   }
 
-  const role = userProfile?.role || 'productor';
-  if (!roles.includes(role)) {
-    // Redirige al dashboard si el rol no está autorizado
+  // For non-admin users, check their role
+  const baseRole = (userProfile?.role || '').toLowerCase().trim();
+  const effectiveRole = normalizeRole(baseRole);
+  const hasAccess = roles.includes(effectiveRole);
+  
+  console.log('RoleRoute - Access Check Result:', {
+    effectiveRole,
+    hasAccess,
+    requiredRoles: roles
+  });
+
+  if (!hasAccess) {
+    console.warn('Access denied to', location.pathname, 'for role', effectiveRole);
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -82,7 +107,7 @@ const Routes = () => {
           
           <Route path="/farmers" element={
             <ProtectedRoute>
-              <RoleRoute roles={['admin', 'operador']}>
+              <RoleRoute roles={['admin', 'operator']}>
                 <FarmerList />
               </RoleRoute>
             </ProtectedRoute>
@@ -90,7 +115,7 @@ const Routes = () => {
           
           <Route path="/parcels" element={
             <ProtectedRoute>
-              <RoleRoute roles={['admin', 'operador', 'productor']}>
+              <RoleRoute roles={['admin', 'operator', 'farmer']}>
                 <PlotList />
               </RoleRoute>
             </ProtectedRoute>
@@ -98,7 +123,7 @@ const Routes = () => {
           
           <Route path="/inspections" element={
             <ProtectedRoute>
-              <RoleRoute roles={['admin', 'operador']}>
+              <RoleRoute roles={['admin', 'operator']}>
                 <InspectionList />
               </RoleRoute>
             </ProtectedRoute>
@@ -106,7 +131,7 @@ const Routes = () => {
           
           <Route path="/financing" element={
             <ProtectedRoute>
-              <RoleRoute roles={['admin', 'operador', 'productor']}>
+              <RoleRoute roles={['admin', 'operator', 'farmer']}>
                 <FinancingManagement />
               </RoleRoute>
             </ProtectedRoute>

@@ -6,6 +6,8 @@ import Button from '../../components/ui/Button';
 import { FiUserPlus, FiSearch, FiUsers, FiX, FiChevronRight } from 'react-icons/fi';
 import FarmerCard from './components/FarmerCard';
 import FarmerDetailPanel from './components/FarmerDetailPanel';
+import { useAuth } from '../../contexts/AuthContext';
+import { normalizeRole } from '../../components/layout/RoleBasedSidebar';
 
 const FarmerManagement = () => {
   const navigate = useNavigate();
@@ -17,6 +19,20 @@ const FarmerManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFarmer, setSelectedFarmer] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+
+  const { user, userProfile } = useAuth();
+  const email = String(user?.email || '').toLowerCase().trim();
+  const isAdmin = email === 'manzanillamadriddeiker@gmail.com';
+  const effectiveRole = isAdmin ? 'admin' : normalizeRole(userProfile?.role || 'farmer');
+  // Nuevo esquema: ya no usamos farmer_cedula. Para el farmer usamos user.id
+  
+  // Debug log
+  console.log('FarmerList - User context:', {
+    email,
+    isAdmin,
+    effectiveRole,
+    userId: user?.id || null,
+  });
 
   // Datos del formulario de nuevo agricultor
   const [newFarmer, setNewFarmer] = useState({
@@ -30,15 +46,47 @@ const FarmerManagement = () => {
     address: '',
   });
 
-  // Cargar agricultores desde la base de datos
+  // Cargar agricultores desde la base de datos (role-aware)
   useEffect(() => {
     const loadFarmers = async () => {
       try {
         setIsLoading(true);
-        const { data, error } = await supabase
+        
+        // Admin can see all farmers with join to user_profiles
+        if (isAdmin) {
+          console.log('Loading all farmers (admin)');
+          const { data, error } = await supabase
+            .from('farmers')
+            .select(`
+              id,
+              user_id,
+              cedula,
+              full_name,
+              phone,
+              email,
+              rif,
+              biography,
+              created_at,
+              users_profiles:user_id (
+                role,
+                is_active
+              )
+            `)
+            .order('full_name', { ascending: true });
+
+          if (error) throw error;
+          setFarmers(data || []);
+          return;
+        }
+
+        // For farmer role, show only their own record by user_id
+        let query = supabase
           .from('farmers')
-          .select('*')
-          .order('display_id', { ascending: true });
+          .select('id,user_id,cedula,full_name,phone,email,rif,biography,created_at');
+        if (effectiveRole === 'farmer' && user?.id) {
+          query = query.eq('user_id', user.id);
+        }
+        const { data, error } = await query.order('full_name', { ascending: true });
 
         if (error) throw error;
         
@@ -64,8 +112,8 @@ const FarmerManagement = () => {
       }
     };
 
-    loadFarmers();
-  }, []);
+    if (userProfile) loadFarmers();
+  }, [userProfile, effectiveRole, user?.id]);
 
   // Manejar cambios en los inputs del formulario
   const handleInputChange = (e) => {
@@ -76,13 +124,13 @@ const FarmerManagement = () => {
     }));
   };
 
-  // Manejar envío del formulario
+  // Manejar envío del formulario (vincular farmercard a un usuario existente por email)
   const handleSubmitFarmer = async (e) => {
     e.preventDefault();
     
-    // Validación básica
-    if (!newFarmer.name.trim() || !newFarmer.cedula.trim() || !newFarmer.rif.trim()) {
-      setFormError('Por favor complete todos los campos requeridos');
+    // Validación básica (requerimos email para ubicar al usuario)
+    if (!newFarmer.email?.trim()) {
+      setFormError('Debes indicar el correo del usuario (ya creado en Auth) para vincular la farmercard');
       return;
     }
 
@@ -90,28 +138,27 @@ const FarmerManagement = () => {
       setFormError('');
       setIsLoading(true);
 
-      // Normalizar cédula con prefijo de tipo de documento (V/E/J/...)
-      const rawCed = newFarmer.cedula.trim();
-      const type = (newFarmer.docType || 'V').toUpperCase();
-      // Evitar duplicar prefijo si el usuario ya lo escribió
-      const cedulaConPrefijo = /^[VEJPGRCA]/i.test(rawCed) ? rawCed.toUpperCase() : `${type}${rawCed}`;
+      // 1) Buscar usuario por email en user_profiles (vinculado a auth.users)
+      const email = (newFarmer.email || '').trim().toLowerCase();
+      const { data: userRow, error: userErr } = await supabase
+        .from('users')
+        .select('id_user')
+        .eq('correo', email)
+        .maybeSingle();
+      if (userErr) throw userErr;
+      if (!userRow?.id_user) {
+        setFormError('No existe un usuario con ese correo. Primero crea el usuario en Auth (o en el panel) y vuelve a intentar.');
+        setIsLoading(false);
+        return;
+      }
 
-      // Insertar en Supabase (tabla farmers) con created_via: 'admin'
-      const nombreCompleto = newFarmer.name.trim();
-      const { error: insertError } = await supabase
-        .from('farmers')
-        .insert([
-          {
-            nombre_completo: nombreCompleto,
-            cedula: cedulaConPrefijo,
-            rif: newFarmer.rif.trim(),
-            email: (newFarmer.email || '').trim(),
-            telefono: (newFarmer.phone || '').trim(),
-            risk: 'bajo'
-          }
-        ]);
-
-      if (insertError) throw insertError;
+      // 2) Vincular/crear farmercard con upsert_farmer_by_user
+      const { error: rpcError2 } = await supabase.rpc('upsert_farmer_by_user', {
+        p_id_user: userRow.id_user,
+        p_categoria: null,
+        p_estado: 'activo'
+      });
+      if (rpcError2) throw rpcError2;
 
       // Refrescar lista desde Supabase
       const { data: refreshed, error: refreshError } = await supabase
@@ -146,7 +193,7 @@ const FarmerManagement = () => {
   const filteredFarmers = farmers.filter(farmer => {
     const searchLower = searchTerm.toLowerCase();
     return (
-      (farmer.nombre_completo?.toLowerCase() || '').includes(searchLower) ||
+      (farmer.full_name?.toLowerCase() || farmer.nombre_completo?.toLowerCase() || '').includes(searchLower) ||
       (farmer.cedula || '').includes(searchTerm) ||
       (farmer.rif?.toLowerCase() || '').includes(searchLower)
     );
@@ -168,8 +215,7 @@ const FarmerManagement = () => {
   return (
     <div className="flex h-screen bg-gray-50 relative">
       <RoleBasedSidebar
-        userRole="admin"
-        isCollapsed={sidebarCollapsed}
+        collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
       
@@ -181,17 +227,19 @@ const FarmerManagement = () => {
               <div>
                 <h1 className="text-2xl font-bold text-foreground">Gestión de Agricultores</h1>
                 <p className="text-muted-foreground">
-                  Administra y supervisa todos los agricultores registrados
+                  {effectiveRole === 'farmer' ? 'Tu registro como agricultor' : 'Administra y supervisa todos los agricultores registrados'}
                 </p>
               </div>
-              <Button
-                variant="default"
-                onClick={() => setShowNewFarmerForm(true)}
-                className="flex items-center gap-2"
-              >
-                <FiUserPlus />
-                <span>Nuevo Agricultor</span>
-              </Button>
+              {effectiveRole !== 'farmer' && (
+                <Button
+                  variant="default"
+                  onClick={() => setShowNewFarmerForm(true)}
+                  className="flex items-center gap-2"
+                >
+                  <FiUserPlus />
+                  <span>Nuevo Agricultor</span>
+                </Button>
+              )}
             </div>
           </header>
 
@@ -225,14 +273,16 @@ const FarmerManagement = () => {
                   {searchTerm ? 'Intenta con otro término de búsqueda' : 'Comienza agregando un nuevo agricultor'}
                 </p>
                 <div className="mt-6">
-                  <Button
-                    onClick={() => setShowNewFarmerForm(true)}
-                    variant="default"
-                    className="flex items-center gap-2"
-                  >
-                    <FiUserPlus />
-                    <span>Agregar Agricultor</span>
-                  </Button>
+                  {effectiveRole !== 'farmer' && (
+                    <Button
+                      onClick={() => setShowNewFarmerForm(true)}
+                      variant="default"
+                      className="flex items-center gap-2"
+                    >
+                      <FiUserPlus />
+                      <span>Agregar Agricultor</span>
+                    </Button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -261,14 +311,14 @@ const FarmerManagement = () => {
                   farmer={selectedFarmer} 
                   isOpen={isPanelOpen} 
                   onClose={handleClosePanel}
-                  userRole="admin"
+                  userRole={effectiveRole}
                 />
               )}
             </div>
           </div>
 
           {/* Formulario de nuevo agricultor */}
-          {showNewFarmerForm && (
+          {showNewFarmerForm && effectiveRole !== 'farmer' && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
               <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                 <div className="p-6">

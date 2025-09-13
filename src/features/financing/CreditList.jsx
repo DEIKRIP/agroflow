@@ -255,8 +255,8 @@ export default function FinancingManagement() {
                     >
                       <option value="">Todos los agricultores</option>
                       {farmers.map((farmer) => (
-                        <option key={farmer.cedula} value={farmer.cedula}>
-                          {farmer.nombre_completo} ({farmer.cedula})
+                        <option key={farmer.farmer_cedula || farmer.id} value={farmer.farmer_cedula}>
+                          {farmer.nombre_completo} ({farmer.farmer_cedula})
                         </option>
                       ))}
                     </Select>
@@ -361,7 +361,7 @@ export default function FinancingManagement() {
                                 {financing.farmer?.nombre_completo || 'Sin nombre'}
                               </div>
                               <div className="text-sm text-gray-500">
-                                {financing.farmer?.cedula || 'Sin cédula'}
+                                {financing.farmer?.farmer_cedula || 'Sin cédula'}
                               </div>
                             </div>
                           </div>

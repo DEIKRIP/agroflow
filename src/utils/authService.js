@@ -1,9 +1,9 @@
-import { supabase, auth } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 // Iniciar sesión con email y contraseña
 export const signIn = async (email, password) => {
   try {
-    const { data, error } = await auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -34,7 +34,7 @@ export const signUp = async (email, password, userData = {}) => {
   try {
     // 1) Crear usuario en auth.users (el trigger poblará user_profiles con email/full_name/role)
     const fullName = `${(userData.firstName || '').trim()} ${(userData.lastName || '').trim()}`.trim();
-    const { data: authData, error: signUpError } = await auth.signUp({
+    const { data: authData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -46,44 +46,18 @@ export const signUp = async (email, password, userData = {}) => {
     if (signUpError) throw signUpError;
     if (!authData.user) throw new Error('No se pudo crear el usuario');
 
+    // 2) Nuevo flujo: NO crear farmer aquí.
+    //    El farmer se crea/actualiza cuando el usuario completa su perfil en ProfileSettings (RPC upsert_farmer).
+    //    Opcionalmente podemos actualizar el full_name en user_profiles para que aparezca en la UI.
     const userId = authData.user.id;
-    const normalizedEmail = (email || '').toLowerCase().trim();
-
-    // 2) Crear/agregar registro en farmers con identidad básica
-    //    Nota: en este esquema farmers usa "cedula" como PK y guarda email.
-    //    Si ya existe un farmer con esa cédula, lo actualizamos y mantenemos consistencia de email/nombre.
-    const farmerPayload = {
-      cedula: String(userData.documentNumber || '').trim(),
-      nombre_completo: fullName || (authData.user.user_metadata?.full_name || '').trim() || normalizedEmail,
-      rif: userData.rif || null,
-      email: normalizedEmail,
-      telefono: userData.phone || null,
-      document_type: userData.documentType || null,
-      birth_date: userData.birthDate || null,
-      created_by: userId
-    };
-
-    // Upsert farmer (si ya existe por cédula, se actualiza)
-    const { data: farmerData, error: farmerError } = await supabase
-      .from('farmers')
-      .upsert([farmerPayload], { onConflict: 'cedula' })
-      .select()
-      .single();
-    if (farmerError) {
-      // rollback del usuario si falla el farmer
-      console.error('Error al crear/actualizar farmer, intentando revertir usuario auth:', farmerError);
-      throw new Error('Error al registrar datos del agricultor');
-    }
-
-    // 3) Enlazar user_profiles con farmers mediante farmer_cedula y actualizar full_name si procede
-    const { data: updatedProfile, error: linkError } = await supabase
-      .from('user_profiles')
-      .update({ farmer_cedula: farmerData.cedula, full_name: fullName || undefined })
+    const { data: updatedProfile, error: updateProfileErr } = await supabase
+      .from('users_profiles')
+      .update({ full_name: fullName || authData.user.user_metadata?.full_name || null })
       .eq('id', userId)
       .select()
       .single();
-    if (linkError) {
-      console.warn('No se pudo vincular user_profile con farmer:', linkError);
+    if (updateProfileErr) {
+      console.warn('No se pudo actualizar full_name inicial en user_profiles:', updateProfileErr);
     }
 
     return {
@@ -91,7 +65,7 @@ export const signUp = async (email, password, userData = {}) => {
       data: {
         user: authData.user,
         profile: updatedProfile || null,
-        farmer: farmerData
+        farmer: null
       },
       message: 'Usuario registrado exitosamente. Por favor verifica tu correo electrónico.'
     };
@@ -108,7 +82,7 @@ export const signUp = async (email, password, userData = {}) => {
 // Cerrar sesión
 export const signOut = async () => {
   try {
-    const { error } = await auth.signOut();
+    const { error } = await supabase.auth.signOut();
     if (error) throw error;
     return { success: true };
   } catch (error) {
@@ -124,7 +98,7 @@ export const signOut = async () => {
 export const getUserProfile = async (userId) => {
   try {
     const { data, error } = await supabase
-      .from('user_profiles')
+      .from('users_profiles')
       .select('*')
       .eq('id', userId)
       .single();
@@ -144,7 +118,7 @@ export const getUserProfile = async (userId) => {
 export const updateUserProfile = async (userId, updates) => {
   try {
     const { data, error } = await supabase
-      .from('user_profiles')
+      .from('users_profiles')
       .update(updates)
       .eq('id', userId)
       .select()
@@ -164,31 +138,30 @@ export const updateUserProfile = async (userId, updates) => {
 // Verificar identidad contra tabla farmers
 export const verifyIdentity = async ({ email, documentType, documentNumber, birthDate }) => {
   try {
+    // Nuevo esquema: no hay document_type ni farmer_cedula.
+    // Esta función opcional valida que exista un farmer con el email/cedula indicado.
     const normalizedEmail = (email || '').toLowerCase().trim();
-    const docType = (documentType || '').toUpperCase().trim();
-    const docNum = String(documentNumber || '').trim();
+    const digitsOnly = String(documentNumber || '').replace(/\D/g, '');
     const bdate = birthDate ? new Date(birthDate).toISOString().slice(0, 10) : null; // YYYY-MM-DD
 
-    // Buscar farmer por email
     const { data: farmer, error } = await supabase
       .from('farmers')
-      .select('cedula, email, document_type, birth_date')
+      .select('id, email, cedula, birth_date')
       .eq('email', normalizedEmail)
-      .single();
+      .maybeSingle();
 
     if (error || !farmer) {
-      return { success: false, error: 'No encontramos un usuario con ese correo' };
+      return { success: false, error: 'No encontramos un productor con ese correo' };
     }
 
-    const okType = String(farmer.document_type || '').toUpperCase().trim() === docType;
-    const okNumber = String(farmer.cedula || '').trim() === docNum;
+    const okNumber = !digitsOnly || (String(farmer.cedula || '').replace(/\D/g, '') === digitsOnly);
     const okBirth = !bdate || (farmer.birth_date && String(farmer.birth_date).slice(0,10) === bdate);
 
-    if (!okType || !okNumber || !okBirth) {
+    if (!okNumber || !okBirth) {
       return { success: false, error: 'Los datos no coinciden con nuestros registros' };
     }
 
-    return { success: true, data: { cedula: farmer.cedula } };
+    return { success: true, data: { farmer_id: farmer.id } };
   } catch (error) {
     console.error('Error al verificar identidad:', error);
     return { success: false, error: 'No se pudo verificar la identidad' };
@@ -201,7 +174,7 @@ export const resetPassword = async (email) => {
   try {
     const normalizedEmail = (email || '').toLowerCase().trim();
     const redirectTo = `${window.location.origin}/reset-password`;
-    const { error } = await auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
     if (error) throw error;
     return { success: true };
   } catch (error) {
@@ -216,7 +189,7 @@ export const resetPassword = async (email) => {
 // Verificar sesión actual
 export const getSession = async () => {
   try {
-    const { data, error } = await auth.getSession();
+    const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
     return { success: true, data };
   } catch (error) {
@@ -230,7 +203,7 @@ export const getSession = async () => {
 
 // Escuchar cambios en la autenticación
 export const onAuthStateChange = (callback) => {
-  return auth.onAuthStateChange(callback);
+  return supabase.auth.onAuthStateChange(callback);
 };
 
 // Exportar todo como un objeto por defecto para compatibilidad

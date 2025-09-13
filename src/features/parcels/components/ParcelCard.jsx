@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import StatusBadgeSystem from '../../../components/ui/StatusBadgeSystem';
 import { useCreateInspection } from '../../../hooks/useCreateInspection';
 import toast from 'react-hot-toast';
+import { useQueryClient } from '@tanstack/react-query';
+import { supabase } from '../../../lib/supabase';
 
 const ParcelCard = ({ 
   parcel, 
@@ -15,32 +17,84 @@ const ParcelCard = ({
   userRole = 'farmer',
   inspectionRequested = false
 }) => {
+  const queryClient = useQueryClient();
   const createInspection = useCreateInspection();
+  const [inspectionStatus, setInspectionStatus] = useState(null);
+
+  // Check if inspection was already requested for this parcel
+  const [hasRequestedInspection, setHasRequestedInspection] = useState(!!inspectionRequested);
+  
+  // Check inspection status on mount
+  useEffect(() => {
+    const checkInspectionStatus = async () => {
+      if (!parcel?.id) return;
+      
+      const { data, error } = await supabase
+        .from('inspections')
+        .select('id, status')
+        .eq('parcel_id', parcel.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+        
+      if (!error && data) {
+        setHasRequestedInspection(['pending', 'scheduled', 'in_progress'].includes(data.status));
+        setInspectionStatus(data.status);
+      }
+    };
+    
+    checkInspectionStatus();
+  }, [parcel?.id]);
+
+  // Derived state: whether the card should consider the inspection already requested
+  const alreadyRequested = inspectionRequested || hasRequestedInspection;
 
   const handleRequestInspection = async () => {
-    if (inspectionRequested || createInspection.isPending) return;
-    try {
-      const payload = {
-        parcel_id: parcel.id,
-        priority: 'media',
-        metadata: {
-          trigger: 'from_parcel_card',
-          source_ui: 'parcel_card',
-          parcel_snapshot: {
-            code: parcel.code || String(parcel.id),
-            area_ha: parcel.area ?? parcel.area_hectareas ?? null,
-            cultivo: parcel.primaryCrop || parcel.cultivo_principal || null,
-            coords: [parcel.latitude ?? parcel.ubicacion_lat ?? null, parcel.longitude ?? parcel.ubicacion_lng ?? null]
-          }
+    if (alreadyRequested || createInspection.isPending) return;
+    
+    const payload = {
+      parcel_id: parcel.id,
+      priority: 'media',
+      metadata: {
+        trigger: 'from_parcel_card',
+        source_ui: 'parcel_card',
+        parcel_snapshot: {
+          code: parcel.code || String(parcel.id),
+          area_ha: parcel.area ?? parcel.area_hectareas ?? null,
+          cultivo: parcel.primaryCrop || parcel.cultivo_principal || null,
+          coords: [parcel.latitude ?? parcel.ubicacion_lat ?? null, parcel.longitude ?? parcel.ubicacion_lng ?? null]
         }
-      };
+      }
+    };
+
+    try {
       const result = await createInspection.mutateAsync(payload);
-      toast.success('Inspección solicitada correctamente');
+      toast.success('✅ Inspección solicitada correctamente');
+      setHasRequestedInspection(true);
+      
+      // Invalidate related queries
+      queryClient.invalidateQueries(['parcels']);
+      queryClient.invalidateQueries(['inspections']);
+      
       if (typeof onRequestInspection === 'function') {
         onRequestInspection(parcel, result);
       }
     } catch (err) {
-      toast.error(err?.message || 'No se pudo solicitar la inspección');
+      console.error('Error al solicitar inspección:', err);
+      const errorMessage = err?.response?.data?.error || 
+                         err?.message || 
+                         'No se pudo solicitar la inspección. Intente nuevamente.';
+      toast.error(`❌ ${errorMessage}`);
+      
+      // If it's an auth error, suggest re-login
+      if (err?.status === 401) {
+        toast('Por favor inicia sesión nuevamente', {
+          action: {
+            label: 'Iniciar sesión',
+            onClick: () => supabase.auth.signOut()
+          }
+        });
+      }
     }
   };
   const getSoilTypeIcon = (soilType) => {
@@ -97,9 +151,9 @@ const ParcelCard = ({
     return `${parseFloat(lat).toFixed(4)}°, ${parseFloat(lng).toFixed(4)}°`;
   };
 
-  // Roles reales en la app: 'admin', 'operador', 'productor'
-  const canEdit = userRole === 'admin' || userRole === 'productor';
-  const canRequestInspection = userRole === 'admin' || userRole === 'operador';
+  // Roles en la app (ING): 'admin', 'operator', 'farmer'
+  const canEdit = userRole === 'admin' || userRole === 'farmer';
+  const canRequestInspection = userRole === 'admin' || userRole === 'operator';
   const canViewHistory = true;
 
   const handleCardClick = (e) => {
@@ -212,8 +266,19 @@ const ParcelCard = ({
 
       {/* Farmer Info */}
       <div className="bg-muted/50 rounded-lg p-3 mb-4">
-        <div className="flex items-center space-x-2">
-          <Icon name="User" size={16} className="text-muted-foreground" />
+        <div className="flex items-center gap-3">
+          {parcel.farmerAvatar ? (
+            <img
+              src={parcel.farmerAvatar}
+              alt={parcel.farmerName || 'Agricultor'}
+              className="w-8 h-8 rounded-full object-cover border border-border"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+              <Icon name="User" size={16} className="text-muted-foreground" />
+            </div>
+          )}
           <div>
             <p className="text-sm font-medium text-foreground">Agricultor</p>
             <p className="text-xs text-muted-foreground">{parcel.farmerName}</p>
@@ -237,15 +302,15 @@ const ParcelCard = ({
         
         {canRequestInspection && (
           <Button
-            variant={inspectionRequested ? 'default' : 'secondary'}
+            variant="success"
             size="sm"
             iconName="ClipboardCheck"
             iconPosition="left"
             onClick={handleRequestInspection}
-            disabled={inspectionRequested || createInspection.isPending}
-            className={inspectionRequested ? 'bg-green-600 hover:bg-green-600 text-white' : ''}
+            disabled={alreadyRequested || createInspection.isPending}
+            loading={createInspection.isPending}
           >
-            {inspectionRequested
+            {alreadyRequested
               ? 'Inspección Solicitada'
               : (createInspection.isPending ? 'Solicitando…' : 'Solicitar Inspección')}
           </Button>

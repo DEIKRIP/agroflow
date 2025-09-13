@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import LoginHeader from '../login/components/LoginHeader';
 import LoginBackground from '../login/components/LoginBackground';
 import { supabase } from '../../lib/supabase';
+import authService from '../../utils/authService';
 import { toast } from 'react-hot-toast';
 import { Button, Input, Label, Select } from '@/components/ui';
 
@@ -67,31 +68,23 @@ const SignupPage = () => {
     setIsLoading(true);
     
     try {
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          // Importante: estos metadatos se usan en el trigger `public.handle_new_user`
-          // (ver supabase/20250125181800_siembra_pais_digital.sql) para crear
-          // un registro en `public.user_profiles` con rol 'productor' por defecto.
-          data: {
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-            full_name: `${formData.firstName} ${formData.lastName}`.trim(),
-            role: 'productor',
-            phone: formData.phone,
-            document_type: formData.documentType,
-            document_number: formData.documentNumber,
-          },
-          emailRedirectTo: `${window.location.origin}/login`,
-        },
+      const result = await authService.signUp(formData.email, formData.password, {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+        documentType: formData.documentType,
+        documentNumber: formData.documentNumber,
+        birthDate: null,
+        rif: null
       });
 
-      if (signUpError) throw signUpError;
+      if (!result?.success) {
+        throw new Error(result?.error || 'No se pudo completar el registro');
+      }
 
-      toast.success('Registro exitoso para productor agrícola');
+      toast.success('Registro exitoso. Revisa tu correo para confirmar.');
       navigate('/login');
-      
+
     } catch (error) {
       console.error('Error en el registro:', error);
       setError(error.message || 'Error al registrar el usuario. Por favor inténtalo de nuevo.');

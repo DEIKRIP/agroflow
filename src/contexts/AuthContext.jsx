@@ -1,5 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import authService from "../utils/authService";
+import { supabase } from "../lib/supabase";
+
+// Role normalization function
+export const normalizeRole = (r) => {
+  const role = (r || '').toLowerCase().trim();
+  if (['admin', 'administrator'].includes(role)) return 'admin';
+  if (['operator', 'operador'].includes(role)) return 'operator';
+  if (['farmer', 'agricultor', 'productor', 'producer'].includes(role)) return 'farmer';
+  return 'farmer'; // Default role
+};
 
 const AuthContext = createContext();
 
@@ -32,9 +42,59 @@ export function AuthProvider({ children }) {
           const profileResult = await authService.getUserProfile(authUser.id);
 
           if (profileResult?.success && isMounted) {
-            setUserProfile(profileResult.data);
+            try {
+              const { supabase: client } = await import('../lib/supabase');
+              const { data: farmerRow } = await client
+                .from('farmers')
+                .select('id')
+                .eq('user_id', authUser.id)
+                .maybeSingle();
+
+              // Debug log
+              console.log('User profile from DB:', profileResult.data);
+              
+              // Check for admin email
+              const email = String(authUser?.email || '').toLowerCase();
+              const isAdminEmail = email === 'manzanillamadriddeiker@gmail.com';
+              
+              // Create profile with normalized role
+              const userProfileData = {
+                ...profileResult.data,
+                role: isAdminEmail ? 'admin' : normalizeRole(profileResult.data.role || 'farmer'),
+                farmer_id: farmerRow?.id || null
+              };
+              
+              console.log('Final user profile with role:', userProfileData);
+              setUserProfile(userProfileData);
+            } catch (error) {
+              console.error('Error processing user profile:', error);
+              setUserProfile({
+                ...profileResult.data,
+                role: 'farmer' // Safe default
+              });
+            }
           } else if (isMounted) {
-            setAuthError(profileResult?.error || "Failed to load user profile");
+            // Demo mode admin fallback
+            const DEMO = String(import.meta.env.VITE_DEMO_MODE || "").toLowerCase() === "true";
+            const adminEmail = String(import.meta.env.VITE_ADMIN_EMAIL || "").toLowerCase().trim();
+            const adminList = String(import.meta.env.VITE_ADMIN_LIST || "").toLowerCase();
+            const email = String(authUser?.email || "").toLowerCase();
+            const isAdminEmail = !!email && (
+              (adminEmail && email === adminEmail) ||
+              (adminList && adminList.split(",").map(s => s.trim()).includes(email))
+            );
+
+            if (DEMO && isAdminEmail) {
+              // Minimal in-memory profile to unlock the app in demo mode
+              setUserProfile({
+                id: authUser.id,
+                email,
+                full_name: authUser.user_metadata?.full_name || "Demo Admin",
+                role: "admin",
+              });
+            } else {
+              setAuthError(profileResult?.error || "Failed to load user profile");
+            }
           }
         }
       } catch (error) {
@@ -63,11 +123,40 @@ export function AuthProvider({ children }) {
         setUser(session.user);
 
         // Fetch user profile for signed in user
-        authService.getUserProfile(session.user.id).then((profileResult) => {
+        authService.getUserProfile(session.user.id).then(async (profileResult) => {
           if (profileResult?.success && isMounted) {
-            setUserProfile(profileResult.data);
+            try {
+              const { supabase: client } = await import('../lib/supabase');
+              const { data: farmerRow } = await client
+                .from('farmers')
+                .select('id')
+                .eq('user_id', session.user.id)
+                .maybeSingle();
+              setUserProfile({ ...profileResult.data, farmer_id: farmerRow?.id || null });
+            } catch (_) {
+              setUserProfile(profileResult.data);
+            }
           } else if (isMounted) {
-            setAuthError(profileResult?.error || "Failed to load user profile");
+            // Demo mode admin fallback on auth change as well
+            const DEMO = String(import.meta.env.VITE_DEMO_MODE || "").toLowerCase() === "true";
+            const adminEmail = String(import.meta.env.VITE_ADMIN_EMAIL || "").toLowerCase().trim();
+            const adminList = String(import.meta.env.VITE_ADMIN_LIST || "").toLowerCase();
+            const email = String(session?.user?.email || "").toLowerCase();
+            const isAdminEmail = !!email && (
+              (adminEmail && email === adminEmail) ||
+              (adminList && adminList.split(",").map(s => s.trim()).includes(email))
+            );
+
+            if (DEMO && isAdminEmail) {
+              setUserProfile({
+                id: session.user.id,
+                email,
+                full_name: session.user.user_metadata?.full_name || "Demo Admin",
+                role: "admin",
+              });
+            } else {
+              setAuthError(profileResult?.error || "Failed to load user profile");
+            }
           }
         });
       } else if (event === "SIGNED_OUT") {
@@ -113,6 +202,18 @@ export function AuthProvider({ children }) {
       if (!result?.success) {
         setAuthError(result?.error || "Signup failed");
         return { success: false, error: result?.error };
+      }
+
+      // Finalize signup as productor when signup comes from the public signup page.
+      // We don't block the flow if this fails; we log and let UI proceed.
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const newUserId = userRes?.user?.id;
+        if (newUserId) {
+          await supabase.rpc("finalize_signup_as_productor", { p_user_id: newUserId });
+        }
+      } catch (e) {
+        console.log("finalize_signup_as_productor failed (non-blocking):", e?.message || e);
       }
 
       return { success: true, data: result.data };
