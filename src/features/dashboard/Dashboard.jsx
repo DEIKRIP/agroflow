@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import RoleBasedSidebar from '../../components/layout/RoleBasedSidebar';
 import NotificationCenter from '../../components/ui/NotificationCenter';
 import UserMenu from '../../components/ui/UserMenu';
-import Button from '../../components/ui/Button';
+import { Button } from '@/components/ui/Button';
 import Icon from '../../components/AppIcon';
 import { useDashboardMetrics } from './useDashboardMetrics';
 
