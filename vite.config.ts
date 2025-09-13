@@ -9,7 +9,14 @@ process.env.VITE_CJS_IGNORE_WARNING = 'true';
 
 export default defineConfig({
   plugins: [
-    react(), 
+    react({
+      // Add this to fix useLayoutEffect warning in SSR
+      jsxRuntime: 'automatic',
+      jsxImportSource: '@emotion/react',
+      babel: {
+        plugins: ['@emotion/babel-plugin'],
+      },
+    }), 
     tsconfigPaths(),
   ],
   build: {
