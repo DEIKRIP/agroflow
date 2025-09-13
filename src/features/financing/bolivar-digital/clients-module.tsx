@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import Button from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/Card";
-import { PlusCircle, User, Edit, Archive, ArrowRightCircle } from "lucide-react";
+import { User } from "lucide-react";
 import ClientFormDialog from "./client-form-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { deleteClientAction } from "@/lib/bolivarDigitalActions";
@@ -51,11 +51,13 @@ const ClientCard = ({ client, onEdit, onCreateFinanciamiento }: { client: Client
     };
 
     const handleCreateFinanciamiento = () => {
-        // Pass only the client ID. The form will handle fetching the correct parcelas.
+        // Provide required prefill fields with best-effort mapping
         onCreateFinanciamiento({
             clientId: client.id,
-        });
-    }
+            farmerId: (client as any).farmerId || client.id,
+            farmerName: client.fullName || "",
+        } as any);
+    };
 
     const totalEstimado = client.historialParcelas?.reduce((sum, item) => sum + item.montoTotalEstimado, 0) ?? 0;
     const canCreateFinanciamiento = totalEstimado > 0;
@@ -64,17 +66,16 @@ const ClientCard = ({ client, onEdit, onCreateFinanciamiento }: { client: Client
         <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-lg font-bold flex items-center gap-2">
-                    <User className="h-5 w-5 text-primary" />
                     {client.fullName}
                 </CardTitle>
                 <div className="flex items-center gap-2">
-                     <Button variant="ghost" size="icon" onClick={() => onEdit(client)}>
-                        <Edit className="h-4 w-4" />
+                     <Button variant="ghost" size="sm" onClick={() => onEdit(client)}>
+                        Editar
                     </Button>
                     <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
                         <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
-                                <Archive className="h-4 w-4" />
+                            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                                Eliminar
                             </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
@@ -106,8 +107,8 @@ const ClientCard = ({ client, onEdit, onCreateFinanciamiento }: { client: Client
                      <div className="w-full p-3 bg-muted/50 rounded-md flex items-center justify-between text-foreground">
                         <span className="font-semibold flex items-center gap-2">Total a Financiar</span>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-lg">Bs. {totalEstimado.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
-                          {canCreateFinanciamiento && <ArrowRightCircle className="h-5 w-5 text-primary"/>}
+                          <span className="font-bold text-lg">BD. {totalEstimado.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
+                          {canCreateFinanciamiento && <span className="text-primary text-sm">Continuar</span>}
                         </div>
                     </div>
                  </Button>
@@ -128,16 +129,29 @@ export default function ClientsModule({ onCreateFinanciamiento }: { onCreateFina
     const fetchClients = async () => {
       try {
         setLoading(true);
+        // Use farmers as the authoritative source for now
         const { data, error } = await supabase
-          .from('bolivarDigitalClients')
-          .select('*');
-
+          .from('farmers')
+          .select('id, full_name, cedula, phone, rif');
         if (error) throw error;
-
-        setClients(data || []);
-      } catch (err) {
-        setError(err as Error);
-        console.error('Error fetching clients:', err);
+        const mapped = (data || []).map((f: any) => ({
+          id: f.id,
+          fullName: f.full_name || '—',
+          cedula: f.cedula || '—',
+          rif: f.rif || '—',
+          phone: f.phone || '—',
+          address: '—',
+          activity: '—',
+        }));
+        setClients(mapped as any);
+      } catch (err: unknown) {
+        const asError = err instanceof Error ? err : new Error('Unknown error fetching clients');
+        setError(asError);
+        if (err instanceof Error) {
+          console.error('Error fetching clients:', err.message);
+        } else {
+          console.error('Error fetching clients:', err);
+        }
         toast({
           title: 'Error',
           description: 'No se pudieron cargar los clientes',
@@ -151,35 +165,28 @@ export default function ClientsModule({ onCreateFinanciamiento }: { onCreateFina
     fetchClients();
   }, []);
 
-  const handleEditClient = (client: Client) => {
-    setEditingClient(client);
-    setIsClientFormOpen(true);
-  };
+  // Edit handler (using handleEdit defined below)
 
-  const handleClientFormSuccess = () => {
-    // Recargar la lista de clientes después de un cambio exitoso
-    supabase
-      .from('bolivarDigitalClients')
-      .select('*')
-      .then(({ data, error }) => {
-        if (error) throw error;
-        setClients(data || []);
-        setIsClientFormOpen(false);
-        setEditingClient(null);
-        toast({ title: "Cliente guardado exitosamente" });
-      })
-      .catch(err => {
-        console.error('Error reloading clients:', err);
-        toast({
-          title: 'Error',
-          description: 'No se pudo actualizar la lista de clientes',
-          variant: 'destructive',
-        });
+  const handleClientFormSuccess = async () => {
+    try {
+      const { data, error } = await supabase.from('bolivarDigitalClients').select('*');
+      if (error) throw error;
+      setClients(data || []);
+      setIsClientFormOpen(false);
+      setEditingClient(null);
+      toast({ title: "Cliente guardado exitosamente" });
+    } catch (err: any) {
+      console.error('Error reloading clients:', err);
+      toast({
+        title: 'Error',
+        description: 'No se pudo actualizar la lista de clientes',
+        variant: 'destructive',
       });
+    }
   };
 
   if (loading) return <div>Cargando clientes...</div>;
-  if (error) return <div>Error cargando clientes: {error.message}</div>;
+  if (error) return <div>Error cargando clientes: {error?.message}</div>;
 
   const handleAddNew = () => {
     setEditingClient(null);
@@ -195,14 +202,11 @@ export default function ClientsModule({ onCreateFinanciamiento }: { onCreateFina
     <div className="p-1">
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-2xl font-semibold text-foreground">Gestión de Sujetos Productivos</h3>
-        <Button onClick={handleAddNew}>
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Añadir Sujeto Productivo
-        </Button>
+        <Button onClick={handleAddNew}>Añadir Sujeto Productivo</Button>
       </div>
 
       {loading && <p>Cargando...</p>}
-      {error && <p className="text-destructive">Error: {error.message}</p>}
+      {error && <p className="text-destructive">Error: {error.message || 'Ocurrió un error inesperado'}</p>}
 
       {!loading && clients.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed rounded-lg">
@@ -210,10 +214,7 @@ export default function ClientsModule({ onCreateFinanciamiento }: { onCreateFina
           <h3 className="mt-4 text-lg font-medium text-foreground">No hay sujetos productivos registrados</h3>
           <p className="mt-1 text-sm text-muted-foreground">Empiece por añadir su primer sujeto productivo comunitario.</p>
           <div className="mt-6">
-            <Button onClick={handleAddNew}>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Añadir Sujeto Productivo
-            </Button>
+            <Button onClick={handleAddNew}>Añadir Sujeto Productivo</Button>
           </div>
         </div>
       ) : (
@@ -233,7 +234,7 @@ export default function ClientsModule({ onCreateFinanciamiento }: { onCreateFina
         isOpen={isClientFormOpen} 
         setIsOpen={setIsClientFormOpen}
         onSuccess={handleClientFormSuccess}
-        client={editingClient}
+        client={editingClient as any}
       />
     </div>
   );

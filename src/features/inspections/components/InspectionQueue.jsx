@@ -70,11 +70,12 @@ const InspectionQueue = ({ onSelectInspection, selectedInspectionId, userRole: p
 
     const normalized = (data || []).map((row) => {
       const scheduledDate = new Date(row.scheduled_at || row.created_at);
+      const raw = String(row.status || '').toLowerCase();
       let uiStatus = 'pending';
-      if (row.status === 'pendiente') uiStatus = 'pending';
-      else if (row.status === 'programada' || row.status === 'en_progreso') uiStatus = 'scheduled';
-      else if (row.status === 'completada') uiStatus = 'completed';
-      else if (row.status === 'cancelada') uiStatus = 'cancelled';
+      if (raw === 'pendiente' || raw === 'pending') uiStatus = 'pending';
+      else if (raw === 'programada' || raw === 'scheduled' || raw === 'en_progreso' || raw === 'in_progress') uiStatus = 'scheduled';
+      else if (raw === 'completada' || raw === 'completed') uiStatus = 'completed';
+      else if (raw === 'cancelada' || raw === 'cancelled') uiStatus = 'cancelled';
 
       const now = new Date();
       const isOver = scheduledDate && scheduledDate < now && !['completed','cancelled'].includes(uiStatus);

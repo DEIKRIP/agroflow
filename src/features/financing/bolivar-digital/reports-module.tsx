@@ -15,17 +15,6 @@ const chartData = [
     { month: 'Jul', "Flujo Neto": 3490, "Morosidad": 4300 },
 ];
 
-const chartConfig = {
-    "Flujo Neto": {
-        label: "Flujo Neto",
-        color: "hsl(var(--primary))",
-    },
-    "Morosidad": {
-        label: "Morosidad",
-        color: "hsl(var(--destructive))",
-    },
-}
-
 export default function ReportsModule() {
   return (
     <Card>
@@ -54,7 +43,7 @@ export default function ReportsModule() {
               tickFormatter={(value) => value.slice(0, 3)}
             />
             <YAxis 
-                tickFormatter={(value) => `Bs. ${Number(value).toLocaleString()}`}
+                tickFormatter={(value) => `BD. ${Number(value).toLocaleString()}`}
             />
             <Tooltip content={<ChartTooltip />} />
             <Legend />

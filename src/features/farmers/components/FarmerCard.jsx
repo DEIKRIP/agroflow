@@ -136,7 +136,7 @@ const FarmerCard = ({ farmer, onViewDetails }) => {
       <div className="bg-gray-50 px-5 py-3 border-t border-gray-100 flex justify-between items-center">
         <div className="flex items-center text-sm text-gray-600">
           <FiTrendingUp className="mr-1 text-green-500" />
-          <span>Bs. {balance.toLocaleString('es-VE', {minimumFractionDigits: 2})}</span>
+            <span>BD {balance.toLocaleString('es-VE', {minimumFractionDigits: 2})}</span>
         </div>
         <div className="text-xs text-gray-500">
           Última actualización: {new Date().toLocaleDateString('es-VE')}

@@ -55,7 +55,7 @@ const FinancingStatusCard = ({ financing }) => {
         </div>
         <div className="text-right">
           <p className="text-2xl font-bold text-foreground">
-            Bs. {financing.amount.toLocaleString('es-VE')}
+            BD. {financing.amount.toLocaleString('es-VE')}
           </p>
           <p className="text-sm text-muted-foreground">
             Monto solicitado

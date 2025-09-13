@@ -27,7 +27,9 @@ type GenerateScheduleDialogProps = { financiamiento: Financiamiento };
 
 export default function GenerateScheduleDialog({ financiamiento }: GenerateScheduleDialogProps) {
   const [open, setOpen] = useState(false);
-  const [state, formAction, isPending] = useActionState<FormActionState | null>(generateScheduleAction, null);
+  type Reducer = (prevState: FormActionState | null, formData: FormData) => Promise<FormActionState>;
+  const reducer = generateScheduleAction as unknown as Reducer;
+  const [state, formAction, isPending] = useActionState(reducer, null);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -55,7 +57,7 @@ export default function GenerateScheduleDialog({ financiamiento }: GenerateSched
         <form ref={formRef} action={formAction} className="space-y-4">
           <input type="hidden" name="financiamientoId" value={String(financiamiento.id || "")} />
           <div>
-            <Label htmlFor="harvestValue">Valor esperado de cosecha (Bs.)</Label>
+            <Label htmlFor="harvestValue">Valor esperado de cosecha (BD.)</Label>
             <Input id="harvestValue" name="harvestValue" type="number" step="0.01" required />
             {state?.errors?.harvestValue && (
               <p className="text-sm text-destructive mt-1">{state.errors.harvestValue}</p>

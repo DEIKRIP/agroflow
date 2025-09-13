@@ -115,6 +115,54 @@ const FarmerManagement = () => {
     if (userProfile) loadFarmers();
   }, [userProfile, effectiveRole, user?.id]);
 
+  // Suscripción en tiempo real a cambios en farmers
+  useEffect(() => {
+    const channel = supabase
+      .channel('farmers_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'farmers' }, async () => {
+        try {
+          // Recargar lista para reflejar nuevas farmercards
+          if (isAdmin) {
+            const { data, error } = await supabase
+              .from('farmers')
+              .select(`
+                id,
+                user_id,
+                cedula,
+                full_name,
+                phone,
+                email,
+                rif,
+                biography,
+                created_at,
+                users_profiles:user_id (
+                  role,
+                  is_active
+                )
+              `)
+              .order('full_name', { ascending: true });
+            if (!error) setFarmers(data || []);
+          } else {
+            let query = supabase
+              .from('farmers')
+              .select('id,user_id,cedula,full_name,phone,email,rif,biography,created_at');
+            if (effectiveRole === 'farmer' && user?.id) {
+              query = query.eq('user_id', user.id);
+            }
+            const { data, error } = await query.order('full_name', { ascending: true });
+            if (!error) setFarmers(data || []);
+          }
+        } catch (e) {
+          console.warn('Realtime farmers refresh failed', e);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(channel); } catch (_) {}
+    };
+  }, [isAdmin, effectiveRole, user?.id]);
+
   // Manejar cambios en los inputs del formulario
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -124,7 +172,7 @@ const FarmerManagement = () => {
     }));
   };
 
-  // Manejar envío del formulario (vincular farmercard a un usuario existente por email)
+  // Manejar envío del formulario (vincular/crear farmer para un usuario existente por email)
   const handleSubmitFarmer = async (e) => {
     e.preventDefault();
     
@@ -138,27 +186,53 @@ const FarmerManagement = () => {
       setFormError('');
       setIsLoading(true);
 
-      // 1) Buscar usuario por email en user_profiles (vinculado a auth.users)
+      // 1) Buscar usuario por email en users_profiles (vinculada a auth.users)
       const email = (newFarmer.email || '').trim().toLowerCase();
-      const { data: userRow, error: userErr } = await supabase
-        .from('users')
-        .select('id_user')
-        .eq('correo', email)
+      const { data: userProfile, error: userErr } = await supabase
+        .from('users_profiles')
+        .select('id, email, full_name, role')
+        .eq('email', email)
         .maybeSingle();
       if (userErr) throw userErr;
-      if (!userRow?.id_user) {
+      if (!userProfile?.id) {
         setFormError('No existe un usuario con ese correo. Primero crea el usuario en Auth (o en el panel) y vuelve a intentar.');
         setIsLoading(false);
         return;
       }
 
-      // 2) Vincular/crear farmercard con upsert_farmer_by_user
-      const { error: rpcError2 } = await supabase.rpc('upsert_farmer_by_user', {
-        p_id_user: userRow.id_user,
-        p_categoria: null,
-        p_estado: 'activo'
-      });
-      if (rpcError2) throw rpcError2;
+      // 2) Crear o actualizar registro en farmers vinculado por user_id
+      const composedCedula = `${newFarmer.docType || 'V'}${newFarmer.cedula || ''}`.toUpperCase();
+      const payload = {
+        user_id: userProfile.id,
+        full_name: newFarmer.name?.trim() || userProfile.full_name || '',
+        cedula: composedCedula,
+        rif: newFarmer.rif?.trim() || null,
+        phone: newFarmer.phone?.trim() || null,
+        email: email,
+        address: newFarmer.address?.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      // ¿Existe farmer para este user_id?
+      const { data: existingFarmer, error: findErr } = await supabase
+        .from('farmers')
+        .select('id')
+        .eq('user_id', userProfile.id)
+        .maybeSingle();
+      if (findErr) throw findErr;
+
+      if (existingFarmer?.id) {
+        const { error: updErr } = await supabase
+          .from('farmers')
+          .update(payload)
+          .eq('id', existingFarmer.id);
+        if (updErr) throw updErr;
+      } else {
+        const { error: insErr } = await supabase
+          .from('farmers')
+          .insert([{ ...payload, created_at: new Date().toISOString() }]);
+        if (insErr) throw insErr;
+      }
 
       // Refrescar lista desde Supabase
       const { data: refreshed, error: refreshError } = await supabase

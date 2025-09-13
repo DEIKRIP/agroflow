@@ -23,9 +23,9 @@ const LoginFooter = () => {
   ];
 
   return (
-    <div className="mt-12 pt-8 border-t border-border">
+    <div className="w-full mt-12 pt-8 border-t border-border">
       {/* Support Links */}
-      <div className="flex flex-wrap justify-center gap-6 mb-6">
+      <div className="flex flex-wrap justify-center gap-6 mb-6 mx-auto">
         {supportLinks?.map((link) => (
           <a
             key={link?.href}

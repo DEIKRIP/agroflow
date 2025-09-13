@@ -5,6 +5,7 @@ import NotificationCenter from '../../components/ui/NotificationCenter';
 import UserMenu from '../../components/ui/UserMenu';
 import Button from '../../components/ui/Button';
 import Icon from '../../components/AppIcon';
+import { useDashboardMetrics } from './useDashboardMetrics';
 
 // Import dashboard components
 import MetricsCard from './components/MetricsCard';
@@ -16,6 +17,8 @@ import CropSuggestionWidget from './components/CropSuggestionWidget';
 const FarmerDashboard = () => {
   const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Live metrics from Supabase (zeros first, realtime updates)
+  const { metrics, formatted, loading: metricsLoading } = useDashboardMetrics();
   const [currentUser] = useState({
     id: 1,
     name: "Administrador",
@@ -25,27 +28,27 @@ const FarmerDashboard = () => {
     permissions: ["view_dashboard", "manage_farmers", "manage_parcels", "manage_inspections", "manage_financing"]
   });
 
-  // Mock data for dashboard metrics
+  // Mock data for other sections. Metric numbers below will be overridden by live values.
   const [dashboardData, setDashboardData] = useState({
     metrics: {
       financingStatus: {
-        value: "Bs. 125.000",
+        value: "BD. 0",
         subtitle: "Aprobado",
         trend: { direction: 'up', value: '+15%' }
       },
       activeParcels: {
-        value: "3",
+        value: "0",
         subtitle: "Registradas",
         trend: null
       },
       pendingInspections: {
-        value: "1",
+        value: "0",
         subtitle: "Programada",
         trend: null
       },
       upcomingPayments: {
-        value: "Bs. 8.500",
-        subtitle: "Próximo: 15 Ago",
+        value: "BD. 0",
+        subtitle: "Sin fecha",
         trend: null
       }
     },
@@ -89,7 +92,7 @@ const FarmerDashboard = () => {
         id: 1,
         type: 'financing',
         title: 'Financiamiento Aprobado',
-        description: 'Su solicitud de financiamiento FIN-2024-001 ha sido aprobada por Bs. 125.000',
+        description: 'Su solicitud de financiamiento FIN-2024-001 ha sido aprobada por BD. 125.000',
         timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
         status: 'approved',
         metadata: 'Contrato disponible para descarga'
@@ -116,7 +119,7 @@ const FarmerDashboard = () => {
         id: 4,
         type: 'payment',
         title: 'Pago Programado',
-        description: 'Próximo pago de Bs. 8.500 programado para el 15 de agosto',
+        description: 'Próximo pago de BD. 8.500 programado para el 15 de agosto',
         timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
         status: 'pending',
         metadata: 'Cuota 2 de 12'
@@ -206,7 +209,7 @@ const FarmerDashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <MetricsCard
               title="Estado de Financiamiento"
-              value={dashboardData.metrics.financingStatus.value}
+              value={formatted.financingValueStr}
               subtitle={dashboardData.metrics.financingStatus.subtitle}
               icon="DollarSign"
               color="success"
@@ -214,22 +217,22 @@ const FarmerDashboard = () => {
             />
             <MetricsCard
               title="Parcelas Activas"
-              value={dashboardData.metrics.activeParcels.value}
+              value={String(metrics.activeParcelsCount)}
               subtitle={dashboardData.metrics.activeParcels.subtitle}
               icon="MapPin"
               color="primary"
             />
             <MetricsCard
               title="Inspecciones Pendientes"
-              value={dashboardData.metrics.pendingInspections.value}
+              value={String(metrics.pendingInspectionsCount)}
               subtitle={dashboardData.metrics.pendingInspections.subtitle}
               icon="ClipboardCheck"
               color="warning"
             />
             <MetricsCard
               title="Próximos Pagos"
-              value={dashboardData.metrics.upcomingPayments.value}
-              subtitle={dashboardData.metrics.upcomingPayments.subtitle}
+              value={formatted.nextPaymentValueStr}
+              subtitle={metrics.nextPaymentSubtitle}
               icon="CreditCard"
               color="accent"
             />
@@ -304,7 +307,7 @@ const FarmerDashboard = () => {
                     <span className="text-sm text-foreground">Maíz (kg)</span>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-foreground">Bs. 2.50</p>
+                    <p className="text-sm font-medium text-foreground">BD. 2.50</p>
                     <p className="text-xs text-success">+5.2%</p>
                   </div>
                 </div>
@@ -314,7 +317,7 @@ const FarmerDashboard = () => {
                     <span className="text-sm text-foreground">Frijol (kg)</span>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-foreground">Bs. 4.80</p>
+                    <p className="text-sm font-medium text-foreground">BD. 4.80</p>
                     <p className="text-xs text-error">-2.1%</p>
                   </div>
                 </div>
@@ -324,7 +327,7 @@ const FarmerDashboard = () => {
                     <span className="text-sm text-foreground">Yuca (kg)</span>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-foreground">Bs. 1.20</p>
+                    <p className="text-sm font-medium text-foreground">BD. 1.20</p>
                     <p className="text-xs text-success">+8.3%</p>
                   </div>
                 </div>

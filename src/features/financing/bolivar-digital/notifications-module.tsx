@@ -6,8 +6,8 @@ import type { Notification as NotificationType, BolivarDigitalClient } from "@/l
 import { Card, CardContent } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Bell } from "lucide-react";
-// Using @/components/ui/Button to match the actual file name
-import { Button } from "@/components/ui/Button";
+// Use capitalized Button path to match project-wide imports
+import Button from "@/components/ui/Button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -34,14 +34,32 @@ const NotificationCard = ({ notification, clientName, setActiveTab: _setActiveTa
         try {
             setIsUpdating(true);
             const { error } = await supabase
-              .from('notifications')
-              .update({ status: 'read', updatedAt: new Date().toISOString() })
-              .eq('id', notification.id);
-            if (error) throw error;
+                .from('notifications')
+                .update({ 
+                    status: 'read', 
+                    updated_at: new Date().toISOString() 
+                })
+                .eq('id', notification.id);
+                
+            if (error) {
+                console.error('Error marking notification as read:', error);
+                throw error;
+            }
+            
             // Optimistic UI update: mutate local status
             notification.status = 'read';
+            
+            toast({
+                title: 'Notificación actualizada',
+                description: 'La notificación ha sido marcada como leída',
+            });
         } catch (e: any) {
-            toast({ title: "Error", description: e?.message || 'No se pudo marcar como leída', variant: "destructive" });
+            console.error('Error in handleMarkAsRead:', e);
+            toast({ 
+                title: "Error", 
+                description: e?.message || 'No se pudo marcar como leída', 
+                variant: "destructive" 
+            });
         } finally {
             setIsUpdating(false);
         }
@@ -98,15 +116,37 @@ export default function NotificationsModule({ setActiveTab: _setActiveTab }: { s
                 
                 setClients(clientsMap);
 
-                // Fetch notifications
+                // Fetch notifications with better error handling
                 const { data: notificationsData, error: notificationsError } = await supabase
                     .from('notifications')
                     .select('*')
-                    .order('createdAt', { ascending: false });
+                    .order('created_at', { ascending: false });
 
-                if (notificationsError) throw notificationsError;
+                if (notificationsError) {
+                    // If the table does not exist, Supabase returns a Postgres error (relation does not exist)
+                    console.error('Error fetching notifications:', notificationsError);
+                    toast({
+                        title: 'Error',
+                        description: 'No se pudieron cargar las notificaciones. Verifique que la tabla exista.',
+                        variant: 'destructive',
+                    });
+                    return;
+                }
 
-                setNotifications(notificationsData || []);
+                console.log('Fetched notifications:', notificationsData);
+                // Normalize to camelCase to match Notification type
+                const normalized = (notificationsData || []).map((n: any) => ({
+                    id: n.id,
+                    clientId: n.client_id ?? n.clientId,
+                    financiamientoId: n.financiamiento_id ?? n.financiamientoId,
+                    type: n.type,
+                    status: n.status,
+                    message: n.message,
+                    createdAt: n.created_at ?? n.createdAt,
+                    updatedAt: n.updated_at ?? n.updatedAt,
+                    metadata: n.metadata ?? undefined,
+                })) as NotificationType[];
+                setNotifications(normalized);
                 
             } catch (err) {
                 console.error('Error fetching data:', err);
@@ -154,11 +194,14 @@ export default function NotificationsModule({ setActiveTab: _setActiveTab }: { s
             ) : (
                 <div className="space-y-3">
                     {notifications.map(notif => {
-                        const clientName = clients[notif.clientId]?.fullName || "Sujeto no encontrado";
+                        const clientName = notif.clientId && clients[notif.clientId]?.fullName
+                            ? clients[notif.clientId].fullName
+                            : "Sujeto no encontrado";
+
                         return (
                             <NotificationCard 
                                 key={notif.id} 
-                                notification={notif} 
+                                notification={notif}
                                 clientName={clientName} 
                                 setActiveTab={_setActiveTab}
                             />

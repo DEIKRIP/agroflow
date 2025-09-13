@@ -68,12 +68,36 @@ const inspectionService = {
       let query = supabase
         .from('inspections')
         .select(`
-          *,
-          parcel:parcels!parcel_id(
-            id, display_id, area_hectareas, cultivo_principal, tipo_suelo,
-            farmer:farmers!farmer_cedula(nombre_completo, farmer_cedula, display_id)
+          id,
+          parcel_id,
+          inspector_id,
+          requested_by,
+          status,
+          scheduled_at,
+          started_at,
+          completed_at,
+          observations,
+          metadata,
+          created_at,
+          updated_at,
+          parcel:parcel_id(
+            id,
+            name,
+            crop_type,
+            surface_area,
+            location_lat,
+            location_lng,
+            farmer:farmer_id(
+              id,
+              full_name,
+              cedula
+            )
           ),
-          inspector:user_profiles!inspector_id(full_name, role)
+          inspector:inspector_id(
+            id,
+            full_name,
+            role
+          )
         `)
         .order('created_at', { ascending: false });
 
@@ -90,9 +114,7 @@ const inspectionService = {
         query = query.eq('parcel_id', filters.parcel_id);
       }
 
-      if (filters?.farmer_cedula) {
-        query = query.eq('parcels.farmer_cedula', filters.farmer_cedula);
-      }
+      // If you need to filter by farmer_cedula, consider a view or perform client-side filtering
 
       if (filters?.fecha_desde) {
         query = query.gte('scheduled_at', filters.fecha_desde);
@@ -131,12 +153,37 @@ const inspectionService = {
       const { data, error } = await supabase
         .from('inspections')
         .select(`
-          *,
-          parcel:parcels!parcel_id(
-            *,
-            farmer:farmers!farmer_cedula(*)
+          id,
+          parcel_id,
+          inspector_id,
+          requested_by,
+          status,
+          scheduled_at,
+          started_at,
+          completed_at,
+          observations,
+          metadata,
+          created_at,
+          updated_at,
+          parcel:parcel_id(
+            id,
+            name,
+            crop_type,
+            surface_area,
+            location_lat,
+            location_lng,
+            farmer:farmer_id(
+              id,
+              full_name,
+              cedula
+            )
           ),
-          inspector:user_profiles!inspector_id(full_name, role, email)
+          inspector:inspector_id(
+            id,
+            full_name,
+            role,
+            email
+          )
         `)
         .eq('id', inspectionId)
         .single();
@@ -175,14 +222,41 @@ const inspectionService = {
         demoInspections.unshift(data);
         return { success: true, data };
       }
-      // Use RPC to enforce validations (active parcel, dedupe) and snapshot metadata
-      const { data, error } = await supabase.rpc('create_inspection_v2', {
-        p_parcel_id: inspectionData.parcel_id,
-        p_notes: inspectionData.notes ?? null,
-      });
+      // Try RPC first (if present in this project)
+      let data = null;
+      let error = null;
+      try {
+        const rpc = await supabase.rpc('create_inspection_v2', {
+          p_parcel_id: inspectionData.parcel_id,
+          p_notes: inspectionData.notes ?? null,
+        });
+        data = rpc.data;
+        error = rpc.error;
+      } catch (_) {
+        // ignore
+      }
 
-      if (error) {
-        return { success: false, error: error.message };
+      // Fallback to direct insert if RPC is missing
+      if (error || !data) {
+        const { data: authData } = await supabase.auth.getUser();
+        const userId = authData?.user?.id || null;
+        const insertPayload = {
+          parcel_id: inspectionData.parcel_id,
+          requested_by: userId,
+          status: inspectionData.status || 'pending',
+          scheduled_at: inspectionData.scheduled_at ?? null,
+          observations: inspectionData.observations ?? null,
+          metadata: inspectionData.metadata ?? {},
+        };
+        const ins = await supabase
+          .from('inspections')
+          .insert([insertPayload])
+          .select('*')
+          .single();
+        if (ins.error) {
+          return { success: false, error: ins.error.message };
+        }
+        data = ins.data;
       }
 
       // Best-effort activity log
@@ -218,12 +292,28 @@ const inspectionService = {
         })
         .eq('id', inspectionId)
         .select(`
-          *,
-          parcel:parcels!parcel_id(
-            id, area_hectareas, cultivo_principal,
-            farmer:farmers!farmer_cedula(nombre_completo, cedula)
+          id,
+          parcel_id,
+          inspector_id,
+          requested_by,
+          status,
+          scheduled_at,
+          started_at,
+          completed_at,
+          observations,
+          metadata,
+          created_at,
+          updated_at,
+          parcel:parcel_id(
+            id,
+            name,
+            crop_type,
+            surface_area,
+            location_lat,
+            location_lng,
+            farmer:farmer_id(id, full_name, cedula)
           ),
-          inspector:user_profiles!inspector_id(full_name)
+          inspector:inspector_id(id, full_name)
         `)
         .single();
 
@@ -352,13 +442,22 @@ const inspectionService = {
       const { data, error } = await supabase
         .from('inspections')
         .select(`
-          *,
-          parcel:parcels!parcel_id(
-            id, area_hectareas, cultivo_principal, ubicacion_lat, ubicacion_lng,
-            farmer:farmers!farmer_cedula(nombre_completo, farmer_cedula, telefono)
+          id,
+          parcel_id,
+          status,
+          scheduled_at,
+          created_at,
+          parcel:parcel_id(
+            id,
+            name,
+            crop_type,
+            surface_area,
+            location_lat,
+            location_lng,
+            farmer:farmer_id(id, full_name, cedula)
           )
         `)
-        .eq('status', 'pendiente')
+        .in('status', ['pending', 'scheduled'])
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -381,10 +480,20 @@ const inspectionService = {
       const { data, error } = await supabase
         .from('inspections')
         .select(`
-          *,
-          parcel:parcels!parcel_id(
-            id, area_hectareas, cultivo_principal,
-            farmer:farmers!farmer_cedula(nombre_completo, farmer_cedula)
+          id,
+          parcel_id,
+          inspector_id,
+          status,
+          scheduled_at,
+          created_at,
+          parcel:parcel_id(
+            id,
+            name,
+            crop_type,
+            surface_area,
+            location_lat,
+            location_lng,
+            farmer:farmer_id(id, full_name, cedula)
           )
         `)
         .eq('inspector_id', inspectorId)

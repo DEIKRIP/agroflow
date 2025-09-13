@@ -71,26 +71,36 @@ const parcelService = {
         if (filters?.farmer_cedula) {
           data = data.filter((p) => p.farmer_cedula === filters.farmer_cedula);
         }
-        if (filters?.cultivo) {
-          data = data.filter((p) => p.cultivo_principal === filters.cultivo);
+        if (filters?.cultivo || filters?.crop_type) {
+          const ct = filters?.crop_type || filters?.cultivo;
+          data = data.filter((p) => p.cultivo_principal === ct);
         }
-        if (filters?.tipo_suelo) {
-          data = data.filter((p) => p.tipo_suelo === filters.tipo_suelo);
+        if (filters?.min_surface_area || filters?.min_hectareas) {
+          const min = Number(filters?.min_surface_area ?? filters?.min_hectareas);
+          data = data.filter((p) => Number(p.area_hectareas) >= min);
         }
-        if (filters?.min_hectareas) {
-          data = data.filter((p) => Number(p.area_hectareas) >= Number(filters.min_hectareas));
-        }
-        if (filters?.max_hectareas) {
-          data = data.filter((p) => Number(p.area_hectareas) <= Number(filters.max_hectareas));
+        if (filters?.max_surface_area || filters?.max_hectareas) {
+          const max = Number(filters?.max_surface_area ?? filters?.max_hectareas);
+          data = data.filter((p) => Number(p.area_hectareas) <= max);
         }
         return { success: true, data };
       }
-      // Select '*' to be compatible with multiple schema versions; include relation to farmers
+      // Real DB schema selection
       let query = supabase
         .from('parcels')
         .select(`
-          *,
-          farmers:farmer_id (
+          id,
+          farmer_id,
+          name,
+          crop_type,
+          surface_area,
+          location_lat,
+          location_lng,
+          description,
+          is_active,
+          created_at,
+          updated_at,
+          farmer:farmer_id (
             id,
             user_id,
             full_name,
@@ -101,24 +111,20 @@ const parcelService = {
         `);
 
       // Apply filters
-      if (filters?.id_farmer) {
-        query = query.eq('farmer_id', filters.id_farmer);
+      if (filters?.id_farmer || filters?.farmer_id) {
+        query = query.eq('farmer_id', filters.id_farmer ?? filters.farmer_id);
       }
 
-      if (filters?.cultivo) {
-        query = query.eq('cultivo_principal', filters.cultivo);
+      if (filters?.cultivo || filters?.crop_type) {
+        query = query.eq('crop_type', filters.crop_type ?? filters.cultivo);
       }
 
-      if (filters?.tipo_suelo) {
-        query = query.eq('tipo_suelo', filters.tipo_suelo);
+      if (filters?.min_surface_area || filters?.min_hectareas) {
+        query = query.gte('surface_area', filters.min_surface_area ?? filters.min_hectareas);
       }
 
-      if (filters?.min_hectareas) {
-        query = query.gte('area_hectareas', filters.min_hectareas);
-      }
-
-      if (filters?.max_hectareas) {
-        query = query.lte('area_hectareas', filters.max_hectareas);
+      if (filters?.max_surface_area || filters?.max_hectareas) {
+        query = query.lte('surface_area', filters.max_surface_area ?? filters.max_hectareas);
       }
 
       const { data, error } = await query;
@@ -181,26 +187,33 @@ const parcelService = {
       const {
         farmer_id,
         name,
-        area_hectares,
-        soil_type,
-        primary_crop,
-        planting_date,
+        crop_type,
+        surface_area,
+        location_lat,
+        location_lng,
         description,
+        // Legacy compatibility
+        primary_crop,
+        area_hectares,
         lat,
         lng,
       } = parcelData || {};
 
-      const { data, error } = await supabase.rpc('create_parcel_v2', {
-        p_farmer_id: farmer_id || null,
-        p_name: name || null,
-        p_area_hectares: area_hectares ?? null,
-        p_lat: typeof lat === 'number' ? lat : (lat ?? null),
-        p_lng: typeof lng === 'number' ? lng : (lng ?? null),
-        p_primary_crop: primary_crop || null,
-        p_soil_type: soil_type || null,
-        p_planting_date: planting_date || null,
-        p_description: description || null,
-      });
+      const insertPayload = {
+        farmer_id: farmer_id || null,
+        name: name || null,
+        crop_type: crop_type ?? primary_crop ?? null,
+        surface_area: surface_area ?? area_hectares ?? null,
+        location_lat: typeof location_lat === 'number' ? location_lat : (lat ?? null),
+        location_lng: typeof location_lng === 'number' ? location_lng : (lng ?? null),
+        description: description ?? null,
+      };
+
+      const { data, error } = await supabase
+        .from('parcels')
+        .insert([insertPayload])
+        .select('*')
+        .single();
 
       if (error) {
         return { success: false, error: error.message };
@@ -212,7 +225,7 @@ const parcelService = {
           p_entity_type: 'parcel',
           p_entity_id: data?.id,
           p_action: 'created',
-          p_details: { farmer_id: farmer_id || null }
+          p_details: { farmer_id: insertPayload.farmer_id || null }
         });
       } catch (_) {}
 
@@ -258,15 +271,28 @@ const parcelService = {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData?.user?.id;
       if (!userId) return { success: false, error: 'No autenticado' };
+
+      // Resolve farmer_id from cedula
+      const { data: farmer, error: fErr } = await supabase
+        .from('farmers')
+        .select('id, cedula')
+        .eq('cedula', farmer_cedula)
+        .maybeSingle();
+      if (fErr) return { success: false, error: fErr.message };
+      if (!farmer?.id) return { success: false, error: 'Agricultor no encontrado por cédula' };
+
+      const payload = {
+        farmer_id: farmer.id,
+        parcel_id: null, // caller may extend to pass parcel_id
+        requested_amount: amount || 0,
+        purpose: proposito || 'Solicitud generada desde parcela',
+        created_by: userId,
+        status: 'requested'
+      };
+
       const { data, error } = await supabase
-        .from('financings')
-        .insert([{ 
-          farmer_cedula: farmer_cedula || null,
-          monto_solicitado: amount || 0,
-          proposito: proposito || 'Solicitud generada desde parcela',
-          nivel_riesgo: nivel_riesgo,
-          created_by: userId
-        }])
+        .from('financing')
+        .insert([payload])
         .select('*')
         .single();
       if (error) return { success: false, error: error.message };
@@ -286,27 +312,32 @@ const parcelService = {
         const data = { ...demoParcels[idx], farmer: demoParcels[idx].farmer };
         return { success: true, data };
       }
+      const mapped = {
+        name: updates?.name ?? undefined,
+        crop_type: updates?.crop_type ?? updates?.primary_crop ?? undefined,
+        surface_area: updates?.surface_area ?? updates?.area_hectares ?? undefined,
+        location_lat: typeof updates?.location_lat === 'number' ? updates.location_lat : (updates?.lat ?? undefined),
+        location_lng: typeof updates?.location_lng === 'number' ? updates.location_lng : (updates?.lng ?? undefined),
+        description: updates?.description ?? undefined,
+        updated_at: new Date().toISOString(),
+      };
       const { data, error } = await supabase
         .from('parcels')
-        .update({ 
-          ...updates, 
-          updated_at: new Date().toISOString() 
-        })
+        .update(mapped)
         .eq('id', parcelId)
         .select(`
           id,
           farmer_id,
           name,
-          area_hectares,
-          lat,
-          lng,
-          primary_crop,
-          soil_type,
-          planting_date,
+          crop_type,
+          surface_area,
+          location_lat,
+          location_lng,
           description,
-          status,
+          is_active,
           created_at,
-          farmers:farmer_id (id, full_name, cedula)
+          updated_at,
+          farmer:farmer_id (id, full_name, cedula)
         `)
         .single();
 
@@ -361,19 +392,16 @@ const parcelService = {
           total: data.length,
           total_area: data.reduce((sum, p) => sum + Number(p.area_hectareas || 0), 0),
           cultivos: {},
-          suelos: {},
         };
         data.forEach((parcel) => {
           const cultivo = parcel.cultivo_principal;
-          const suelo = parcel.tipo_suelo;
           stats.cultivos[cultivo] = (stats.cultivos[cultivo] || 0) + 1;
-          stats.suelos[suelo] = (stats.suelos[suelo] || 0) + 1;
         });
         return { success: true, data: stats };
       }
       const { data, error } = await supabase
         .from('parcels')
-        .select('cultivo_principal, area_hectareas, tipo_suelo');
+        .select('crop_type, surface_area');
 
       if (error) {
         return { success: false, error: error.message };
@@ -381,18 +409,14 @@ const parcelService = {
 
       const stats = {
         total: data?.length || 0,
-        total_area: data?.reduce((sum, p) => sum + parseFloat(p.area_hectareas || 0), 0) || 0,
+        total_area: data?.reduce((sum, p) => sum + Number(p.surface_area || 0), 0) || 0,
         cultivos: {},
-        suelos: {}
       };
 
       // Group by crop type
       data?.forEach(parcel => {
-        const cultivo = parcel.cultivo_principal;
-        const suelo = parcel.tipo_suelo;
-        
+        const cultivo = parcel.crop_type;
         stats.cultivos[cultivo] = (stats.cultivos[cultivo] || 0) + 1;
-        stats.suelos[suelo] = (stats.suelos[suelo] || 0) + 1;
       });
 
       return { success: true, data: stats };
@@ -412,49 +436,49 @@ const parcelService = {
 
       const parcel = parcelResult.data;
       
-      // Mock AI suggestions based on soil type and location
+      // Mock AI suggestions based on crop type (soil info not available in current schema)
       const suggestions = [];
       
-      switch (parcel.tipo_suelo) {
-        case 'franco':
+      switch (parcel.crop_type) {
+        case 'maiz':
           suggestions.push(
             { 
-              cultivo: 'maiz', 
-              confianza: 0.95, 
-              justificacion: 'Suelo franco ideal para maíz, excelente retención de agua y nutrientes' 
+              cultivo: 'maiz',
+              confianza: 0.9,
+              justificacion: 'Variedades locales adaptadas a tu zona productiva'
             },
             { 
-              cultivo: 'frijol', 
-              confianza: 0.87, 
-              justificacion: 'Leguminosa que mejora la fertilidad del suelo franco' 
+              cultivo: 'frijol',
+              confianza: 0.82,
+              justificacion: 'Rotación recomendada para mejorar fertilidad'
             }
           );
           break;
-        case 'arcilloso':
+        case 'arroz':
           suggestions.push(
             { 
-              cultivo: 'arroz', 
-              confianza: 0.92, 
-              justificacion: 'Suelo arcilloso retiene agua perfectamente para cultivo de arroz' 
+              cultivo: 'arroz',
+              confianza: 0.88,
+              justificacion: 'Buen rendimiento con manejo hídrico adecuado'
             },
             { 
-              cultivo: 'yuca', 
-              confianza: 0.78, 
-              justificacion: 'Resistente a suelos pesados y compactos' 
+              cultivo: 'yuca',
+              confianza: 0.76,
+              justificacion: 'Alternativa resistente con buena aceptación'
             }
           );
           break;
-        case 'arenoso':
+        case 'papa':
           suggestions.push(
             { 
-              cultivo: 'papa', 
-              confianza: 0.83, 
-              justificacion: 'Drenaje excelente en suelo arenoso favorece tubérculos' 
+              cultivo: 'papa',
+              confianza: 0.83,
+              justificacion: 'Condiciones favorables para tubérculos'
             },
             { 
               cultivo: 'cebolla', 
               confianza: 0.76, 
-              justificacion: 'Bulbos se desarrollan bien en suelos bien drenados' 
+              justificacion: 'Buena rotación con papa, demanda estable'
             }
           );
           break;

@@ -28,7 +28,9 @@ type ClientLite = { id: string; fullName: string; cedula?: string; rif?: string 
 type ParcelaLite = { id: string; name: string; montoTotalEstimado?: number };
 
 export default function FinanciamientoFormDialog({ open, onOpenChange }: FinanciamientoFormDialogProps) {
-  const [state, formAction, isPending] = useActionState<FormActionState | null>(addFinanciamientoAction, null);
+  type Reducer = (prevState: FormActionState | null, formData: FormData) => Promise<FormActionState>;
+  const reducer = addFinanciamientoAction as unknown as Reducer;
+  const [state, formAction, isPending] = useActionState(reducer, null);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -150,7 +152,7 @@ export default function FinanciamientoFormDialog({ open, onOpenChange }: Financi
               options={parcelas.map((p) => ({
                 value: p.id,
                 label: p.montoTotalEstimado
-                  ? `${p.name} (Estimado: Bs. ${p.montoTotalEstimado.toLocaleString("es-VE")})`
+                  ? `${p.name} (Estimado: BD. ${p.montoTotalEstimado.toLocaleString("es-VE")})`
                   : p.name,
               }))}
               disabled={!clientId}
@@ -173,7 +175,7 @@ export default function FinanciamientoFormDialog({ open, onOpenChange }: Financi
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <Label htmlFor="monto">Monto (Bs.)</Label>
+              <Label htmlFor="monto">Monto (BD.)</Label>
               <Input
                 id="monto"
                 name="monto"

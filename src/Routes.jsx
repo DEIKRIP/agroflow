@@ -1,25 +1,25 @@
 import React from 'react';
 import { BrowserRouter, Routes as RouterRoutes, Route, Navigate, useLocation } from 'react-router-dom';
-import ScrollToTop from 'components/ScrollToTop';
-import ErrorBoundary from 'components/ErrorBoundary';
-import { useAuth } from './contexts/AuthContext';
-import { normalizeRole } from './components/layout/RoleBasedSidebar.jsx';
+import ScrollToTop from '@/components/ScrollToTop';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import { useAuth } from '@/contexts/AuthContext';
+import { normalizeRole } from '@/components/layout/RoleBasedSidebar.jsx';
 
 // Auth Components
-import Login from 'pages/login';
-import Signup from 'pages/signup';
-import ForgotPassword from 'pages/forgot-password';
-import ResetPassword from 'pages/reset-password';
+import Login from '@/pages/login';
+import Signup from '@/pages/signup';
+import ForgotPassword from '@/pages/forgot-password';
+import ResetPassword from '@/pages/reset-password';
 
 // Main Application Pages
-import Dashboard from 'features/dashboard/Dashboard';
-import FarmerList from 'features/farmers/FarmerList';
-import PlotList from 'features/parcels/PlotList';
-import InspectionList from 'features/inspections/InspectionList';
-import FinancingManagement from 'features/financing/FinancingManagement';
-import CreditList from 'features/financing/CreditList';
-import NotFound from 'pages/NotFound';
-import ProfileSettings from 'features/settings/ProfileSettings';
+import Dashboard from '@/features/dashboard/Dashboard';
+import FarmerList from '@/features/farmers/FarmerList';
+import PlotList from '@/features/parcels/PlotList';
+import InspectionList from '@/features/inspections/InspectionList';
+import FinancingManagement from '@/features/financing/FinancingManagement';
+import CreditList from '@/features/financing/CreditList';
+import NotFound from '@/pages/NotFound';
+import ProfileSettings from '@/features/settings/ProfileSettings';
 
 // Componente para proteger rutas
 const ProtectedRoute = ({ children }) => {

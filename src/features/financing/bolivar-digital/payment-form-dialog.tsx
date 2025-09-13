@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useActionState, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { addPaymentAction, type FormActionState } from "@/lib/bolivarDigitalActions";
+import { supabase } from "@/lib/supabase";
 import Button from "@/components/ui/Button";
 import {
   Dialog,
@@ -20,10 +19,11 @@ import Select from "@/components/ui/Select";
 import type { Financiamiento } from "@/lib/types";
 import { Textarea } from "@/components/ui/Textarea";
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return <Button type="submit" disabled={pending}>{pending ? "Registrando..." : "Registrar Pago"}</Button>;
-}
+type LocalFormState = {
+  success: boolean;
+  error: string | null;
+  isSubmitting: boolean;
+};
 
 type PaymentFormDialogProps = {
   isOpen: boolean;
@@ -33,7 +33,7 @@ type PaymentFormDialogProps = {
 };
 
 export default function PaymentFormDialog({ isOpen, setIsOpen, financiamiento, clientName }: PaymentFormDialogProps) {
-  const [state, formAction, isPending] = useActionState<FormActionState | null>(addPaymentAction, null);
+  const [formState, setFormState] = useState<LocalFormState>({ success: false, error: null, isSubmitting: false });
   const [metodo, setMetodo] = useState<string | undefined>("Efectivo");
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
@@ -44,18 +44,44 @@ export default function PaymentFormDialog({ isOpen, setIsOpen, financiamiento, c
     if (!isOpen) {
       formRef.current?.reset();
       setMetodo("Efectivo");
+      setFormState({ success: false, error: null, isSubmitting: false });
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    if (isPending || !state) return;
-    if (state.success) {
-      toast({ title: "Éxito", description: state.message || "Pago registrado" });
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const fecha = String(fd.get("fecha") || "");
+    const monto = Number(fd.get("monto") || 0);
+    const metodoValue = String(fd.get("metodo") || metodo || "Efectivo");
+    const referenciaCosecha = String(fd.get("referenciaCosecha") || "");
+    const clientId = String(fd.get("clientId") || "");
+    const financiamientoId = String(fd.get("financiamientoId") || "");
+
+    setFormState({ success: false, error: null, isSubmitting: true });
+    try {
+      // Insert into payments ledger
+      const { error } = await supabase.from("payments").insert([
+        {
+          financing_id: financiamientoId || financiamiento.id,
+          farmer_id: clientId || (financiamiento as any).farmer_id || financiamiento.clientId,
+          created_at: new Date(fecha).toISOString(),
+          amount: monto,
+          method: metodoValue,
+          notes: referenciaCosecha || null,
+        },
+      ]);
+      if (error) throw error;
+
+      setFormState({ success: true, error: null, isSubmitting: false });
+      toast({ title: "Éxito", description: "Pago registrado" });
       setIsOpen(false);
-    } else {
-      toast({ title: "Error", description: state.message || "No se pudo registrar el pago", variant: "destructive" });
+    } catch (err: any) {
+      console.error("Error registrando pago:", err);
+      setFormState({ success: false, error: err?.message || "Error al registrar pago", isSubmitting: false });
+      toast({ title: "Error", description: err?.message || "No se pudo registrar el pago", variant: "destructive" });
     }
-  }, [state, isPending, toast, setIsOpen]);
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -65,12 +91,12 @@ export default function PaymentFormDialog({ isOpen, setIsOpen, financiamiento, c
           <DialogDescription>
             Registrar el ingreso de una venta de cosecha para <strong>{clientName}</strong>. El sistema aplicará la retención correspondiente al crédito.
             <div className="flex justify-between text-sm mt-2 font-medium">
-              <span>Monto del crédito: <span className="text-foreground">Bs. {(financiamiento.monto || 0).toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span></span>
-              <span>Saldo Pendiente: <span className="text-primary">Bs. {saldoPendiente.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span></span>
+              <span>Monto del crédito: <span className="text-foreground">BD. {(financiamiento.monto || 0).toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span></span>
+              <span>Saldo Pendiente: <span className="text-primary">BD. {saldoPendiente.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span></span>
             </div>
           </DialogDescription>
         </DialogHeader>
-        <form ref={formRef} action={formAction} className="space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
           <input type="hidden" name="clientId" value={String(financiamiento.clientId || "")} />
           <input type="hidden" name="financiamientoId" value={String(financiamiento.id || "")} />
 
@@ -78,12 +104,10 @@ export default function PaymentFormDialog({ isOpen, setIsOpen, financiamiento, c
             <div>
               <Label htmlFor="fecha">Fecha del Pago</Label>
               <Input id="fecha" name="fecha" type="date" required defaultValue={new Date().toISOString().split("T")[0]} />
-              {state?.errors?.fecha && <p className="text-sm text-destructive mt-1">{state.errors.fecha}</p>}
             </div>
             <div>
-              <Label htmlFor="monto">Monto Total Venta (Bs.)</Label>
+              <Label htmlFor="monto">Monto Total Venta (BD.)</Label>
               <Input id="monto" name="monto" type="number" step="0.01" required placeholder="Total de la venta" />
-              {state?.errors?.monto && <p className="text-sm text-destructive mt-1">{state.errors.monto}</p>}
             </div>
           </div>
 
@@ -103,22 +127,20 @@ export default function PaymentFormDialog({ isOpen, setIsOpen, financiamiento, c
                 { value: "Otro", label: "Otro" },
               ]}
             />
-            {state?.errors?.metodo && <p className="text-sm text-destructive mt-1">{state.errors.metodo}</p>}
           </div>
 
           <div>
             <Label htmlFor="referenciaCosecha">Referencia Cosecha (Opcional)</Label>
             <Textarea id="referenciaCosecha" name="referenciaCosecha" placeholder="Ej: Cosecha de Maíz ciclo invierno 2024" />
-            {state?.errors?.referenciaCosecha && (
-              <p className="text-sm text-destructive mt-1">{state.errors.referenciaCosecha}</p>
-            )}
           </div>
 
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="secondary">Cancelar</Button>
             </DialogClose>
-            <SubmitButton />
+            <Button type="submit" disabled={formState.isSubmitting}>
+              {formState.isSubmitting ? "Registrando..." : "Registrar Pago"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

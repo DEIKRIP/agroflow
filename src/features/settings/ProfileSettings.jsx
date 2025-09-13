@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState, useContext } from 'react';
+import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
@@ -17,7 +18,7 @@ const initialState = {
   photo: null,
   photoUrl: null,
   idDocument: null,
-  idDocumentUrl: null,
+  documentUrl: null,
   fullName: '',
   email: '',
   phone: '',
@@ -55,6 +56,10 @@ const methodOptions = ['Convencional', 'Orgánico', 'Hidropónico', 'Agroecológ
 const irrigationOptions = ['Goteo', 'Aspersión', 'Gravedad', 'Pivot'];
 
 export default function ProfileSettings() {
+  const navigate = useNavigate();
+  // Refs para inputs ocultos de carga de archivos
+  const photoInputRef = useRef(null);
+  const idDocInputRef = useRef(null);
   const [tab, setTab] = useState('perfil');
   const [form, setForm] = useState(initialState);
   const [darkMode, setDarkMode] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('theme') === 'dark' : false));
@@ -133,7 +138,7 @@ export default function ProfileSettings() {
           address: profile?.address || '',
           gps: profile?.gps || '',
           photoUrl: farmer?.profile_image_url || profile?.avatar_url || null,
-          idDocumentUrl: farmer?.id_document_url || null,
+          documentUrl: farmer?.document_url || null,
         };
         
         setForm(prev => ({
@@ -246,7 +251,7 @@ export default function ProfileSettings() {
       // Subir a Supabase Storage
       const documentUrl = await uploadFile(file, 'profile-images', 'documents');
       
-      setForm((p) => ({ ...p, idDocumentUrl: documentUrl, idDocument: file }));
+      setForm((p) => ({ ...p, documentUrl: documentUrl, idDocument: file }));
       toast.success('Documento subido correctamente', { id: 'document-upload' });
 
     } catch (error) {
@@ -330,21 +335,41 @@ export default function ProfileSettings() {
         return;
       }
 
-      // Guardar/actualizar farmer vía RPC
-      const { data: farmerId, error: rpcError } = await supabase.rpc('upsert_farmer', {
-        p_cedula: digitsOnly,
-        p_full_name: fullName,
-        p_phone: form.phone || null,
-        p_email: email,
-        p_rif: form.rif || null,
-        p_birth_date: form.fechadenacimiento || null,
-        p_biography: form.bio || null,
-        p_profile_image_url: form.photoUrl || null
-      });
-      
-      if (rpcError) {
-        console.error('upsert_farmer error:', rpcError);
-        throw new Error(`Error al guardar datos del agricultor: ${rpcError.message}`);
+      // Guardar/actualizar farmer directamente en public.farmers (upsert por user_id)
+      const cedulaCompuesta = `${form.documentType || 'V'}${digitsOnly}`.toUpperCase();
+      const farmerPayload = {
+        user_id: user.id,
+        full_name: fullName,
+        email,
+        phone: form.phone || null,
+        rif: form.rif || null,
+        cedula: cedulaCompuesta,
+        birth_date: form.fechadenacimiento || null,
+        biography: form.bio || null,
+        profile_image_url: form.photoUrl || null,
+        document_url: form.documentUrl || null,
+        updated_at: new Date().toISOString()
+      };
+
+      // ¿Existe farmer para este usuario?
+      const { data: existingFarmer, error: findFarmerErr } = await supabase
+        .from('farmers')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (findFarmerErr) throw findFarmerErr;
+
+      if (existingFarmer?.id) {
+        const { error: updErr } = await supabase
+          .from('farmers')
+          .update(farmerPayload)
+          .eq('id', existingFarmer.id);
+        if (updErr) throw updErr;
+      } else {
+        const { error: insErr } = await supabase
+          .from('farmers')
+          .insert([{ ...farmerPayload, created_at: new Date().toISOString() }]);
+        if (insErr) throw insErr;
       }
 
       // Actualizar datos adicionales en users_profiles
@@ -368,20 +393,7 @@ export default function ProfileSettings() {
         // No lanzar error, ya que el farmer se guardó correctamente
       }
 
-      // Si hay documento ID, actualizar en farmers
-      if (form.idDocumentUrl) {
-        const { error: docError } = await supabase
-          .from('farmers')
-          .update({
-            id_document_url: form.idDocumentUrl,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', user.id);
-          
-        if (docError) {
-          console.warn('Error updating document URL:', docError);
-        }
-      }
+      // Ya incluimos document_url en el upsert del farmer
 
       // Refrescar el contexto de usuario
       if (refreshProfile) {
@@ -389,6 +401,8 @@ export default function ProfileSettings() {
       }
 
       toast.success('Perfil guardado correctamente', { id: 'save' });
+      // Redirigir al dashboard para continuar el flujo normal
+      navigate('/dashboard');
       
     } catch (error) {
       console.error('Save error:', error);
@@ -508,102 +522,117 @@ export default function ProfileSettings() {
               </aside>
 
               {/* Contenido principal */}
-              <main className="flex-1">
-                <TabsContent value="perfil">
-                  <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div className="md:col-span-1">
-                      <div className="border rounded-lg p-4">
-                        <p className="font-medium mb-2">Foto de perfil</p>
-                        <div className="flex items-center gap-4">
-                          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center overflow-hidden relative">
-                            {uploadingPhoto && (
-                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                              </div>
-                            )}
-                            {form.photo ? (
-                              <img
-                                src={URL.createObjectURL(form.photo)}
-                                alt="Foto"
-                                className="w-full h-full object-cover"
-                              />
-                            ) : form.photoUrl ? (
-                              <img
-                                src={form.photoUrl}
-                                alt="Foto"
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <Icon name="User" className="w-6 h-6 text-muted-foreground" />
-                            )}
-                          </div>
-                          <label className="inline-flex items-center gap-2 cursor-pointer">
-                            <input 
-                              type="file" 
-                              accept="image/*" 
-                              className="hidden" 
-                              onChange={handleFile}
-                              disabled={uploadingPhoto}
+            <main className="flex-1">
+              <TabsContent value="perfil">
+                <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div className="md:col-span-1">
+                    <div className="border rounded-lg p-4">
+                      <p className="font-medium mb-2">Foto de perfil</p>
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center overflow-hidden relative">
+                          {uploadingPhoto && (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                            </div>
+                          )}
+                          {form.photo ? (
+                            <img
+                              src={URL.createObjectURL(form.photo)}
+                              alt="Foto"
+                              className="w-full h-full object-cover"
                             />
-                            <Button variant="outline" size="sm" type="button" disabled={uploadingPhoto}>
-                              <Icon name="Upload" className="w-4 h-4 mr-2" /> 
-                              {uploadingPhoto ? 'Subiendo...' : 'Subir imagen'}
-                            </Button>
-                          </label>
+                          ) : form.photoUrl ? (
+                            <img
+                              src={form.photoUrl}
+                              alt="Foto"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Icon name="User" className="w-6 h-6 text-muted-foreground" />
+                          )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-2">Acepta JPG, PNG (máx. 2MB). Recomendado: 400x400px.</p>
+                        <div className="inline-flex items-center gap-2">
+                          <input
+                            ref={photoInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleFile}
+                            disabled={uploadingPhoto}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            type="button"
+                            disabled={uploadingPhoto}
+                            onClick={() => photoInputRef.current && photoInputRef.current.click()}
+                          >
+                            <Icon name="Upload" className="w-4 h-4 mr-2" />
+                            {uploadingPhoto ? 'Subiendo...' : 'Subir imagen'}
+                          </Button>
+                        </div>
                       </div>
+                      <p className="text-xs text-muted-foreground mt-2">Acepta JPG, PNG (máx. 2MB). Recomendado: 400x400px.</p>
+                    </div>
 
-                      <div className="border rounded-lg p-4 mt-4">
-                        <p className="font-medium mb-2">Documento de identificación</p>
-                        <div className="flex items-center gap-4">
-                          <div className="w-16 h-16 rounded bg-muted flex items-center justify-center overflow-hidden relative">
-                            {uploadingDocument && (
-                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                    <div className="border rounded-lg p-4 mt-4">
+                      <p className="font-medium mb-2">Documento de identificación</p>
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded bg-muted flex items-center justify-center overflow-hidden relative">
+                          {uploadingDocument && (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                            </div>
+                          )}
+                          {form.idDocument ? (
+                            form.idDocument.type === 'application/pdf' ? (
+                              <div className="text-center">
+                                <Icon name="IdCard" className="w-6 h-6 text-muted-foreground" />
+                                <p className="text-xs mt-1">PDF</p>
                               </div>
-                            )}
-                            {form.idDocument ? (
-                              form.idDocument.type === 'application/pdf' ? (
-                                <div className="text-center">
-                                  <Icon name="IdCard" className="w-6 h-6 text-muted-foreground" />
-                                  <p className="text-xs mt-1">PDF</p>
-                                </div>
-                              ) : (
-                                <img
-                                  src={URL.createObjectURL(form.idDocument)}
-                                  alt="Documento"
-                                  className="w-full h-full object-cover"
-                                />
-                              )
-                            ) : form.idDocumentUrl ? (
+                            ) : (
                               <img
-                                src={form.idDocumentUrl}
+                                src={URL.createObjectURL(form.idDocument)}
                                 alt="Documento"
                                 className="w-full h-full object-cover"
                               />
-                            ) : (
-                              <Icon name="IdCard" className="w-6 h-6 text-muted-foreground" />
-                            )}
-                          </div>
-                          <label className="inline-flex items-center gap-2 cursor-pointer">
-                            <input 
-                              type="file" 
-                              accept="image/*,.pdf" 
-                              className="hidden" 
-                              onChange={handleIdFile}
-                              disabled={uploadingDocument}
+                            )
+                          ) : form.documentUrl ? (
+                            <img
+                              src={form.documentUrl}
+                              alt="Documento"
+                              className="w-full h-full object-cover"
                             />
-                            <Button variant="outline" size="sm" type="button" disabled={uploadingDocument}>
-                              <Icon name="Upload" className="w-4 h-4 mr-2" /> 
-                              {uploadingDocument ? 'Subiendo...' : 'Subir documento'}
-                            </Button>
-                          </label>
+                          ) : (
+                            <Icon name="IdCard" className="w-6 h-6 text-muted-foreground" />
+                          )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-2">Acepta imagen o PDF (máx. 3MB). Se recomienda foto nítida del anverso.</p>
+                        <div className="inline-flex items-center gap-2">
+                          <input
+                            ref={idDocInputRef}
+                            type="file"
+                            accept="image/*,.pdf"
+                            className="hidden"
+                            onChange={handleIdFile}
+                            disabled={uploadingDocument}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            type="button"
+                            disabled={uploadingDocument}
+                            onClick={() => idDocInputRef.current && idDocInputRef.current.click()}
+                          >
+                            <Icon name="Upload" className="w-4 h-4 mr-2" />
+                            {uploadingDocument ? 'Subiendo...' : 'Subir documento'}
+                          </Button>
+                        </div>
                       </div>
+                      <p className="text-xs text-muted-foreground mt-2">Acepta imagen o PDF (máx. 3MB). Se recomienda foto nítida del anverso.</p>
                     </div>
+                  </div>
 
+                  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
                         <label className="text-sm mb-1.5 block font-medium">
@@ -690,8 +719,9 @@ export default function ProfileSettings() {
                         />
                       </div>
                     </div>
-                  </section>
-                </TabsContent>
+                  </div>
+                </section>
+              </TabsContent>
 
                 <TabsContent value="preferencias">
                   <section className="grid grid-cols-1 md:grid-cols-2 gap-6">

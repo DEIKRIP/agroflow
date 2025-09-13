@@ -15,3 +15,27 @@ declare module '@/hooks/use-toast' {
     dismiss: (toastId?: string) => void;
   };
 }
+
+declare module '@/utils/parcelService' {
+  const parcelService: any;
+  export default parcelService;
+}
+
+declare module '@/utils/inspectionService' {
+  const inspectionService: any;
+  export default inspectionService;
+}
+
+// AppIcon (JSX wrapper over lucide-react), default export
+declare module '@/components/AppIcon' {
+  import type React from 'react';
+  const Icon: React.FC<{
+    name: string;
+    size?: number;
+    color?: string;
+    className?: string;
+    strokeWidth?: number;
+    [key: string]: any;
+  }>;
+  export default Icon;
+}

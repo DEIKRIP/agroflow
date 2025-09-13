@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
-import { Briefcase, CreditCard, AreaChart, Bell, User, Wrench } from "lucide-react";
+import { Briefcase, CreditCard, User } from "lucide-react";
 import {
   Dialog,
   Trigger as DialogTrigger,
@@ -10,7 +10,6 @@ import {
   Title as DialogTitle,
   Description as DialogDescription,
   Content as DialogContent,
-  Close as DialogClose,
   Tabs,
   TabsContent,
   TabsList,
@@ -36,12 +35,9 @@ const lazyWithRetry = (componentImport: () => Promise<{ default: React.Component
   });
 
 // Importar módulos con lazy loading y manejo de errores
-const ReportsModule = lazyWithRetry(() => import('./reports-module'));
 const ClientsModule = lazyWithRetry(() => import('./clients-module'));
 const FinanciamientosModule = lazyWithRetry(() => import('./financiamientos-module'));
 const PaymentsModule = lazyWithRetry(() => import('./payments-module'));
-const NotificationsModule = lazyWithRetry(() => import('./notifications-module'));
-const AdminModule = lazyWithRetry(() => import('./admin-module'));
 
 // Tipos necesarios
 interface FarmerWithParcelas {
@@ -102,13 +98,10 @@ export default function BolivarDigitalDialog({ farmers, loadingFarmers, children
         </DialogHeader>
         <div className="flex-grow overflow-hidden">
           <Tabs defaultValue="clients" value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-3">
               <TabsTrigger value="clients"><User className="mr-1 h-4 w-4" />Sujetos</TabsTrigger>
               <TabsTrigger value="loans"><Briefcase className="mr-1 h-4 w-4" />Financiamientos</TabsTrigger>
               <TabsTrigger value="payments"><CreditCard className="mr-1 h-4 w-4" />Pagos</TabsTrigger>
-              <TabsTrigger value="notifications"><Bell className="mr-1 h-4 w-4" />Notificaciones</TabsTrigger>
-              <TabsTrigger value="reports"><AreaChart className="mr-1 h-4 w-4" />Reportes</TabsTrigger>
-              <TabsTrigger value="admin"><Wrench className="mr-1 h-4 w-4" />Admin</TabsTrigger>
             </TabsList>
             <div className="flex-grow overflow-auto mt-2">
                 <ScrollArea className="h-[65vh] w-full">
@@ -132,21 +125,7 @@ export default function BolivarDigitalDialog({ farmers, loadingFarmers, children
                       <PaymentsModule />
                     </Suspense>
                   </TabsContent>
-                  <TabsContent value="notifications" className="p-1">
-                    <Suspense fallback={<div>Cargando notificaciones...</div>}>
-                      <NotificationsModule setActiveTab={setActiveTab} />
-                    </Suspense>
-                  </TabsContent>
-                  <TabsContent value="reports" className="p-1">
-                    <Suspense fallback={<div>Cargando reportes...</div>}>
-                      <ReportsModule />
-                    </Suspense>
-                  </TabsContent>
-                  <TabsContent value="admin" className="p-1">
-                    <Suspense fallback={<div>Cargando administración...</div>}>
-                      <AdminModule />
-                    </Suspense>
-                  </TabsContent>
+                  {/* Submódulos aún no maduros ocultos temporalmente: Notificaciones, Reportes, Admin */}
                 </ScrollArea>
             </div>
           </Tabs>

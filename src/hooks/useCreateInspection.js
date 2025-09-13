@@ -12,7 +12,7 @@ export function useCreateInspection() {
         parcel_id: payload.parcel_id,
         priority: payload.priority || 'media',
         metadata: payload.metadata || {},
-        status: 'pendiente',
+        status: 'pending',
       };
       const res = await inspectionService.createInspection(createPayload);
       if (!res.success) {
